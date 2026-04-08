@@ -4,17 +4,17 @@
   fetchFromGitHub,
 }:
 buildGoModule rec {
-  pname = "ncmdump";
-  version = "0.0.1";
+  pname = "keywrap";
+  version = "0.1.0";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = pname;
-    rev = "v${version}";
-    sha256 = "sha256-2i4cCyBMoy22OHX0Q0VvRfQXq8R3kln4u6fCzR76bw8=";
+    rev = version;
+    sha256 = "sha256-39S+tQPGnNWiHAtdddYZ0s4QAhpiVVTiLprJQaVsA/A=";
   };
 
-  vendorHash = "sha256-7QXnwcLu0d24ACvxVePMzrOKQXtzWDoVsHxL0KYTJS4=";
+  vendorHash = "sha256-i+df0h6mWBWD+9HY+xlM9PSB5MSjUH8ooVbmDViBpDA=";
 
   ldflags = [
     "-s"
