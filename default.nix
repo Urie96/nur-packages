@@ -1,14 +1,10 @@
-# This file describes your repository contents.
-# It should return a set of nix derivations
-# and optionally the special attributes `lib`, `overlays`,
-# `nixosModules`, `homeModules`, `darwinModules` and `flakeModules`.
-# It should NOT import <nixpkgs>. Instead, you should take pkgs as an argument.
-# Having pkgs default to <nixpkgs> is fine though, and it lets you use short
-# commands such as:
-#     nix-build -A mypackage
-
+let
+  flakeLock = builtins.fromJSON (builtins.readFile ./flake.lock);
+  nixpkgsLocked = flakeLock.nodes.nixpkgs.locked;
+  lockedNixpkgsSrc = builtins.fetchTarball "https://github.com/NixOS/nixpkgs/archive/${nixpkgsLocked.rev}.tar.gz";
+in
 {
-  pkgs ? import <nixpkgs> { },
+  pkgs ? import lockedNixpkgsSrc { },
 }:
 
 {

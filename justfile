@@ -10,7 +10,7 @@ update:
       exit 0;
     fi;
     mapfile -t pkgs < <(printf '%s\n' "$selected");
-    ./update.sh "${pkgs[@]}"
+    ./scripts/update.sh "${pkgs[@]}"
 
 build pkg="":
     #!/usr/bin/env bash
@@ -25,3 +25,7 @@ build pkg="":
 
 select:
     @nix-instantiate --eval --json --strict -E 'builtins.attrNames (import ./default.nix {})' | jq -r '.[]' | fzf --multi --prompt='update> '
+
+update-nixpkgs:
+    nix --extra-experimental-features nix-command --extra-experimental-features flakes flake update
+    ./scripts/update-build-yml-from-flake-lock.py
