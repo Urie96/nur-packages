@@ -21,4 +21,5 @@ buildNpmPackage rec {
   meta = {
     mainProgram = pname;
   };
+  passthru.updateScript = ./update.sh;
 }

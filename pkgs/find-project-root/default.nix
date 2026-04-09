@@ -12,4 +12,5 @@ rustPlatform.buildRustPackage rec {
     sha256 = "sha256-tzXzPSnM8PRggq1wl7tmCyHHipYqIbn+iPCsQnJOngE=";
   };
   cargoHash = "sha256-jrLrAc9I94nETbhybVXCULvO3OwOKnUa129hyCRx+Fg=";
+  passthru.updateScript = ./update.sh;
 }

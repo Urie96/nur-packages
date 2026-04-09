@@ -18,4 +18,6 @@ buildGoModule rec {
     "-s"
     "-w"
   ];
+
+  passthru.updateScript = ./update.sh;
 }

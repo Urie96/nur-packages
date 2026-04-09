@@ -16,6 +16,7 @@ rustPlatform.buildRustPackage rec {
   prePatch = ''
     cp ${./Cargo.lock} ./Cargo.lock
   '';
+
   cargoLock = {
     lockFile = ./Cargo.lock;
   };

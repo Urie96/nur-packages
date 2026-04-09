@@ -23,4 +23,5 @@ buildGoModule rec {
   meta = with lib; {
     platforms = platforms.unix;
   };
+  passthru.updateScript = ./update.sh;
 }

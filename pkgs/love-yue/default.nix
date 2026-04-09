@@ -18,4 +18,5 @@ buildNpmPackage rec {
     mkdir -p $out/share
     mv ./dist $out/share/public
   '';
+  passthru.updateScript = ./update.sh;
 }
