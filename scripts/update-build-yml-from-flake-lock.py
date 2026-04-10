@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import json
 import re
+import subprocess
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(
+    subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+)
 flake_lock = ROOT / "flake.lock"
 build_yml = ROOT / ".github" / "workflows" / "build.yml"
 
