@@ -1,5 +1,6 @@
 alias u := update
 alias b := build
+alias r := repl
 
 update:
     #!/usr/bin/env bash
@@ -29,3 +30,6 @@ select:
 update-nixpkgs:
     nix --extra-experimental-features nix-command --extra-experimental-features flakes flake update
     ./scripts/update-build-yml-from-flake-lock.py
+
+repl:
+    nix repl --file ./default.nix
