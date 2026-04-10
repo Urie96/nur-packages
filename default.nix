@@ -1,10 +1,5 @@
-let
-  flakeLock = builtins.fromJSON (builtins.readFile ./flake.lock);
-  nixpkgsLocked = flakeLock.nodes.nixpkgs.locked;
-  lockedNixpkgsSrc = builtins.fetchTarball "https://github.com/NixOS/nixpkgs/archive/${nixpkgsLocked.rev}.tar.gz";
-in
 {
-  pkgs ? import lockedNixpkgsSrc { },
+  pkgs ? import <nixpkgs> { },
 }:
 
 {
