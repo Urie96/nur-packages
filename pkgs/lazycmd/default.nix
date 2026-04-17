@@ -25,4 +25,6 @@ rustPlatform.buildRustPackage rec {
 
   cargoHash = "sha256-MA85baOTOLwG1PEdUjnsUIbCMJfXUqpX7QQ2jW5F7a0=";
   passthru.updateScript = ./update.sh;
+
+  meta.mainProgram = "lazycmd";
 }

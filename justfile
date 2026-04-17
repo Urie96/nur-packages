@@ -22,7 +22,8 @@ build pkg="":
       pkg="$(just select)"
     fi
 
-    nix-build -A "$pkg"
+    # nix-build -A "$pkg"
+    nix build .#"$pkg"
 
 select:
     @nix-instantiate --eval --json --strict -E 'builtins.attrNames (import ./default.nix {})' | jq -r '.[]' | fzf --multi --prompt='update> '

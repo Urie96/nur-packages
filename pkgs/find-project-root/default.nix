@@ -13,4 +13,6 @@ rustPlatform.buildRustPackage rec {
   };
   cargoHash = "sha256-jrLrAc9I94nETbhybVXCULvO3OwOKnUa129hyCRx+Fg=";
   passthru.updateScript = ./update.sh;
+
+  meta.mainProgram = "find-project-root";
 }

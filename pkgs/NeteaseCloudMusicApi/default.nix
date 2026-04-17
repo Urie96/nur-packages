@@ -18,8 +18,6 @@ buildNpmPackage rec {
   '';
   production = true;
 
-  meta = {
-    mainProgram = pname;
-  };
   passthru.updateScript = ./update.sh;
+  meta.mainProgram = "NeteaseCloudMusicApi";
 }

@@ -21,4 +21,5 @@ rustPlatform.buildRustPackage rec {
   cargoHash = "sha256-lrlUd289rQmfUMNccJo7rxI9A86ILPTt7M/+SOxDY+Y=";
 
   passthru.updateScript = ./update.sh;
+  meta.mainProgram = "translate";
 }

@@ -22,6 +22,8 @@ buildGoModule rec {
   ];
   meta = with lib; {
     platforms = platforms.unix;
+    mainProgram = "ncmdump";
   };
   passthru.updateScript = ./update.sh;
+
 }

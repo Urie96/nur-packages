@@ -20,4 +20,5 @@
   find-project-root = pkgs.callPackage ./pkgs/find-project-root { };
   sso = pkgs.callPackage ./pkgs/sso { };
   love-yue = pkgs.callPackage ./pkgs/love-yue { };
+  apprise-server = pkgs.callPackage ./pkgs/apprise-server { };
 }

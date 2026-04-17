@@ -20,4 +20,5 @@ buildGoModule rec {
   ];
 
   passthru.updateScript = ./update.sh;
+  meta.mainProgram = "sso";
 }

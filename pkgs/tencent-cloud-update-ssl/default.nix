@@ -19,4 +19,6 @@ buildGoModule rec {
     "-s"
     "-w"
   ];
+
+  meta.mainProgram = "tencent-cloud-update-ssl";
 }

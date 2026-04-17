@@ -34,4 +34,6 @@ rustPlatform.buildRustPackage rec {
       mv $out/bin/gui $out/bin/foxtrot
     fi
   '';
+
+  meta.mainProgram = "foxtrot";
 }
