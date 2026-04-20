@@ -3,11 +3,6 @@
 }:
 
 {
-  # The `lib`, `overlays`, `nixosModules`, `homeModules`,
-  # `darwinModules` and `flakeModules` names are special
-  lib = import ./lib { inherit pkgs; }; # functions
-  overlays = import ./overlays; # nixpkgs overlays
-
   ncmdump = pkgs.callPackage ./pkgs/ncmdump { };
   translate = pkgs.callPackage ./pkgs/translate { };
   foxtrot = pkgs.callPackage ./pkgs/foxtrot { };
@@ -21,4 +16,5 @@
   sso = pkgs.callPackage ./pkgs/sso { };
   love-yue = pkgs.callPackage ./pkgs/love-yue { };
   apprise-server = pkgs.callPackage ./pkgs/apprise-server { };
+  mac-ocr = pkgs.callPackage ./pkgs/mac-ocr { };
 }
