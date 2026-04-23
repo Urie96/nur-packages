@@ -19,6 +19,12 @@ let
     licenseFromMeta = p.meta.license or [];
     licenseList = if builtins.isList licenseFromMeta then licenseFromMeta else [licenseFromMeta];
   in !(p.meta.broken or false) && builtins.all (license: license.free or true) licenseList;
+  isPlatformCompatible = p:
+    let
+      platforms = p.meta.platforms or null;
+    in
+      if platforms == null then true
+      else builtins.elem pkgs.stdenv.hostPlatform.system platforms;
   isCacheable = p: !(p.preferLocalBuild or false);
   shouldRecurseForDerivations = p: isAttrs p && p.recurseForDerivations or false;
 
@@ -48,7 +54,7 @@ let
 
 in
 rec {
-  buildPkgs = filter isBuildable nurPkgs;
+  buildPkgs = filter (p: isBuildable p && isPlatformCompatible p) nurPkgs;
   cachePkgs = filter isCacheable buildPkgs;
 
   buildOutputs = concatMap outputsOf buildPkgs;
