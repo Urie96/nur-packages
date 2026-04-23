@@ -17,4 +17,7 @@
   love-yue = pkgs.callPackage ./pkgs/love-yue { };
   apprise-server = pkgs.callPackage ./pkgs/apprise-server { };
   mac-ocr = pkgs.callPackage ./pkgs/mac-ocr { };
+  sing-box = pkgs.callPackage ./pkgs/sing-box { };
+
+  updater = pkgs.callPackage ./pkgs/updater { };
 }

@@ -5,10 +5,10 @@
 
 buildNpmPackage rec {
   pname = "NeteaseCloudMusicApi";
-  version = "4.30.0";
+  version = "4.31.0";
   src = fetchzip {
     url = "https://registry.npmjs.org/${pname}/-/${pname}-${version}.tgz";
-    hash = "sha256-FdbZw665svP4HuV/06CK0jSyHKPYynX/hox7fa15tO4=";
+    hash = "sha256-qAYWmXys3TDugaTZcHtCBq4GbVcV2AxqAEpTRQjVIw4=";
   };
   npmDepsHash = "sha256-Kf7lfwFdq1kV9wYE4XfN+Gck7ecIi4nGa9u9KiVT+p8=";
 
@@ -18,6 +18,5 @@ buildNpmPackage rec {
   '';
   production = true;
 
-  passthru.updateScript = ./update.sh;
   meta.mainProgram = "NeteaseCloudMusicApi";
 }

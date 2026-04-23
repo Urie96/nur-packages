@@ -24,5 +24,4 @@ buildGoModule rec {
     platforms = platforms.unix;
     mainProgram = "keywrap";
   };
-  passthru.updateScript = ./update.sh;
 }

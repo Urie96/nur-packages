@@ -46,7 +46,6 @@ rustPlatform.buildRustPackage rec {
 
   passthru = {
     inherit web;
-    updateScript = ./update.sh;
   };
 
 }
