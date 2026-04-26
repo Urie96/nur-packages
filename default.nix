@@ -3,6 +3,8 @@
 }:
 
 {
+  updater = pkgs.callPackage ./pkgs/updater { };
+
   ncmdump = pkgs.callPackage ./pkgs/ncmdump { };
   translate = pkgs.callPackage ./pkgs/translate { };
   foxtrot = pkgs.callPackage ./pkgs/foxtrot { };
@@ -18,6 +20,5 @@
   apprise-server = pkgs.callPackage ./pkgs/apprise-server { };
   mac-ocr = pkgs.callPackage ./pkgs/mac-ocr { };
   sing-box = pkgs.callPackage ./pkgs/sing-box { };
-
-  updater = pkgs.callPackage ./pkgs/updater { };
+  llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
 }

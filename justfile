@@ -1,8 +1,11 @@
 alias u := update
 alias b := build
 
-update:
+all:
     nix run .#updater -- --list
+
+update pkg:
+    nix run .#updater -- -p {{ pkg }}
 
 build pkg="":
     #!/usr/bin/env bash
