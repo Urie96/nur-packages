@@ -10,7 +10,7 @@
   foxtrot = pkgs.callPackage ./pkgs/foxtrot { };
   flatnvim = pkgs.callPackage ./pkgs/flatnvim { };
   keywrap = pkgs.callPackage ./pkgs/keywrap { };
-  lazycmd = pkgs.callPackage ./pkgs/lazycmd { };
+  lazydeck = pkgs.callPackage ./pkgs/lazydeck { };
   NeteaseCloudMusicApi = pkgs.callPackage ./pkgs/NeteaseCloudMusicApi { };
   tencent-cloud-update-ssl = pkgs.callPackage ./pkgs/tencent-cloud-update-ssl { };
   hackbook = pkgs.callPackage ./pkgs/hackbook { };
