@@ -2,12 +2,11 @@
   lib,
   stdenvNoCC,
   fetchFromGitHub,
-  fira-code,
 }:
 
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "fira-code-italic";
-  version = fira-code.version;
+  version = "0-unstable-2019-09-27";
 
   src = fetchFromGitHub {
     owner = "Avi-D-coder";
@@ -22,18 +21,15 @@ stdenvNoCC.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
-    mkdir -p $out/share/fonts/{opentype,truetype}
+    mkdir -p $out/share/fonts/opentype
 
-    # Keep the original nixpkgs Fira Code package intact, then add the two
-    # italic OpenType faces from Avi-D-coder/FiraCode-italic.
-    cp -r ${fira-code}/share/fonts/. $out/share/fonts/
     install -Dm644 FiraCode-RegularItalic.otf FiraCode-BoldItalic.otf \
       -t $out/share/fonts/opentype
 
     runHook postInstall
   '';
 
-  meta = fira-code.meta // {
+  meta = {
     description = "Fira Code with Regular Italic and Bold Italic fonts";
     homepage = "https://github.com/Avi-D-coder/FiraCode-italic";
     longDescription = ''

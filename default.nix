@@ -22,4 +22,5 @@
   sing-box = pkgs.callPackage ./pkgs/sing-box { };
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
   fira-code-italic = pkgs.callPackage ./pkgs/fira-code-italic { };
+  fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
 }
