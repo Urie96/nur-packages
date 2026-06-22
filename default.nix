@@ -21,6 +21,7 @@
   mac-ocr = pkgs.callPackage ./pkgs/mac-ocr { };
   sing-box = pkgs.callPackage ./pkgs/sing-box { };
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
+  kosync = pkgs.callPackage ./pkgs/kosync { };
   fira-code-italic = pkgs.callPackage ./pkgs/fira-code-italic { };
   fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
 }
