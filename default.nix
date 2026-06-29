@@ -24,4 +24,6 @@
   kosync = pkgs.callPackage ./pkgs/kosync { };
   fira-code-italic = pkgs.callPackage ./pkgs/fira-code-italic { };
   fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
+
+  pi-server = pkgs.callPackage ./pkgs/pi-server { };
 }
