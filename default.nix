@@ -26,4 +26,5 @@
   fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
 
   pi-server = pkgs.callPackage ./pkgs/pi-server { };
+  xiaozhi-server-rs = pkgs.callPackage ./pkgs/xiaozhi-server-rs { };
 }
