@@ -10,13 +10,13 @@
 }:
 stdenv.mkDerivation (finalAttrs: {
   pname = "pi-server";
-  version = "0.1.0-unstable-2026-06-29";
+  version = "0-unstable-2026-07-02";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = "pi-server";
-    rev = "456a27769eb850bc38b7e2d7061f4b6fcdd588d8";
-    hash = "sha256-7VDbP7yejwPIsrkVJK7cyXxipZWFljMR3pfv6TCF3cc=";
+    rev = "719064f6a17879a099a94cf46b0ab959eac21a51";
+    hash = "sha256-NNqM8xFQxVBRDJvuYvBLZTPGCI7igB9//QkFSxSonPI=";
   };
 
   pnpmDeps = fetchPnpmDeps {
