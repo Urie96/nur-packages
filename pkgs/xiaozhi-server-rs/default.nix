@@ -10,13 +10,13 @@
 }:
 rustPlatform.buildRustPackage rec {
   pname = "xiaozhi-server-rs";
-  version = "0-unstable-2026-07-01";
+  version = "0-unstable-2026-07-02";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = pname;
-    rev = "cd438ebc6097640098f6f7546dbca6938a68f460";
-    sha256 = "sha256-S+2Pcsry3qLOtsT68CT7eIjHjmBNESYN6N0vopUmvbY=";
+    rev = "6624b1260b32f41b97c95e5583d2be6a6c8c7ebe";
+    sha256 = "sha256-pE6xFTCY1VJb/aT96YfNH8Ob5B45oRoFPfyegOko+PQ=";
   };
   cargoHash = "sha256-FJGiQjSbNvN42+XE4qyIPrlkzOYWz512DFO1sbpN7xc=";
 
