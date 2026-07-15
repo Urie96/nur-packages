@@ -20,5 +20,5 @@ buildGoModule rec {
     "-w"
   ];
 
-  meta.mainProgram = "tencent-cloud-update-ssl";
+  meta.mainProgram = "tencent_cloud_update_ssl";
 }
