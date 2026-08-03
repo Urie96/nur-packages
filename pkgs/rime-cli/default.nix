@@ -7,13 +7,13 @@
 }:
 rustPlatform.buildRustPackage {
   pname = "rime-cli";
-  version = "0-unstable-2026-08-02";
+  version = "0-unstable-2026-08-03";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = "rime-cli";
-    rev = "e41b5183e36333677a796ab7de518265e25e1fd7";
-    hash = "sha256-zDLxmk6lyh8nsAV2dEhT4U11r94cwc1pn8io1N+ou/g=";
+    rev = "63331c4097e9ec6a55a6832c8efe1b23893ce3e1";
+    hash = "sha256-O/FEbaBE6Wd9kpDPvqSU6a2fVJjTvxKLiIsoX601JhY=";
   };
 
   cargoHash = "sha256-OlSoQ8jXEW/7RM7BBwVfqifeYLKfQkaged+1b/n9BdY=";
