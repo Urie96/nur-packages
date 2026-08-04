@@ -19,6 +19,8 @@
   love-yue = pkgs.callPackage ./pkgs/love-yue { };
   apprise-server = pkgs.callPackage ./pkgs/apprise-server { };
   mac-ocr = pkgs.callPackage ./pkgs/mac-ocr { };
+  cliclick = pkgs.callPackage ./pkgs/cliclick { };
+  app-switch-watcher = pkgs.callPackage ./pkgs/app-switch-watcher { };
   sing-box = pkgs.callPackage ./pkgs/sing-box { };
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
   kosync = pkgs.callPackage ./pkgs/kosync { };
