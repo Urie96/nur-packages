@@ -6,13 +6,13 @@
 }:
 rustPlatform.buildRustPackage rec {
   pname = "lazydeck";
-  version = "0.1.0-unstable-2026-06-13";
+  version = "0.1.0-unstable-2026-09-01";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = pname;
-    rev = "872b1b830a0ee2f6898f618374c6fe1db776a702";
-    sha256 = "sha256-ra3JFpnOnQhsI5gNIRl0wqK+y7TKiSu+YJ3k7ITHnXc=";
+    rev = "72f3f4af149668a213d326cb6412d104c353460e";
+    sha256 = "sha256-3/7hxTcB1rbC4SXpEO4zHXPyW7r6fm24ZJi3eD+GUZA=";
   };
 
   doCheck = false;
