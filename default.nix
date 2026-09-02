@@ -21,6 +21,7 @@
   mac-ocr = pkgs.callPackage ./pkgs/mac-ocr { };
   cliclick = pkgs.callPackage ./pkgs/cliclick { };
   app-switch-watcher = pkgs.callPackage ./pkgs/app-switch-watcher { };
+  confetti = pkgs.callPackage ./pkgs/confetti { };
   sing-box = pkgs.callPackage ./pkgs/sing-box { };
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
   kosync = pkgs.callPackage ./pkgs/kosync { };
