@@ -1,0 +1,17 @@
+# Curated list of npm packages to track in registry.json.
+#
+# One npm package name per line. `#` starts a comment, blank lines are ignored.
+# Scoped names are fine (e.g. @ayulab/pi-rewind).
+#
+# Pin a version with `name@1.2.3`; a bare `name` follows npm's `latest` tag.
+# Pinned packages are never bumped by `just update-pi`.
+#
+# After editing run:
+#   just update piExtensions
+# which re-resolves every entry and prunes anything removed from this file.
+#
+# To mirror everything tagged with the npm `pi-package` keyword instead of this
+# list, run `node pkgs/piExtensions/generate.mjs --all` (see --help).
+
+pi-web-access
+pi-mcp-adapter

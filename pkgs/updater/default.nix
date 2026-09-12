@@ -6,6 +6,7 @@
   nix,
   git,
   gh,
+  nodejs,
 }:
 
 python3.pkgs.buildPythonApplication {
@@ -31,6 +32,7 @@ python3.pkgs.buildPythonApplication {
           nix
           git
           gh
+          nodejs
         ]
       } \
       --set PYTHONPATH $out/lib

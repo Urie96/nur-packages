@@ -6,6 +6,7 @@
   updater = pkgs.callPackage ./pkgs/updater { };
 
   skills = import ./pkgs/skills { inherit pkgs; };
+  piExtensions = import ./pkgs/piExtensions { inherit pkgs; };
 
   ncmdump = pkgs.callPackage ./pkgs/ncmdump { };
   translate = pkgs.callPackage ./pkgs/translate { };
