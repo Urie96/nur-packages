@@ -65,12 +65,17 @@ def main() -> None:
 
     # Step 3: Update npmDepsHash using nix-update
     print("\nStep 3: Updating npmDepsHash...")
+    # --no-src: keep the src hash from step 1
+    # --version=skip: force nix-update to recompute dependency hashes even
+    #   though the version is already up to date (otherwise it skips them)
+    # Attribute without a system prefix resolves to the current system.
     result = subprocess.run(
         [
             "nix-update",
             "--flake",
-            "packages.aarch64-darwin.NeteaseCloudMusicApi",
+            "NeteaseCloudMusicApi",
             "--no-src",
+            "--version=skip",
         ],
         cwd=flake_root,
         capture_output=True,

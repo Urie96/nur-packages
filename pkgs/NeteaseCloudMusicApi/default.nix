@@ -10,7 +10,7 @@ buildNpmPackage rec {
     url = "https://registry.npmjs.org/${pname}/-/${pname}-${version}.tgz";
     hash = "sha256-LAXVSh4E7MyLyr4EtN/PMXkTmScYaUrm7KIz404uaUU=";
   };
-  npmDepsHash = "sha256-m5mhn3bKJkKkpVrXhs3h8zR+LvNo1SOjlgF37M5vz4U=";
+  npmDepsHash = "sha256-FHGPZ2bTPaWWG1JorTsWyObB0Lb1yl9gWDZA9D/pRpU=";
 
   dontNpmBuild = true;
   postPatch = ''
