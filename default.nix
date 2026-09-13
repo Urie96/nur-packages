@@ -35,4 +35,5 @@
   xiaozhi-server-rs = pkgs.callPackage ./pkgs/xiaozhi-server-rs { };
   rime-cli = pkgs.callPackage ./pkgs/rime-cli { };
   skhd-zig = pkgs.callPackage ./pkgs/skhd-zig { };
+  split-audio = pkgs.callPackage ./pkgs/split-audio { };
 }
