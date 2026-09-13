@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""
+翻译工具 - 英译中/中译英
+支持命令行参数或 stdin 输入
+使用 --ai 参数强制使用 AI 翻译
+"""
+
+import json
+import re
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+
+MODEL = "deepseek-v4-flash"
+BASE_URL = "https://api.deepseek.com/chat/completions"
+TRANSLATE_API_URL = "https://trans.lubui.com:8443/translate"
+
+# 中文字符正则匹配
+CHINESE_PATTERN = re.compile(r"[\u4e00-\u9fff\u3400-\u4dbf\uF900-\uFAFF]")
+
+
+def get_input_text():
+    """获取输入文本，支持命令行参数或 stdin"""
+    args = sys.argv[1:]
+    force_ai = "--ai" in args
+    filtered_args = [arg for arg in args if arg != "--ai"]
+
+    if filtered_args:
+        text = " ".join(filtered_args)
+    else:
+        text = sys.stdin.read().strip()
+
+    if not text:
+        print("Error: No input text provided", file=sys.stderr)
+        sys.exit(1)
+
+    return text, force_ai
+
+
+def rbw_get(key):
+    """从 rbw 获取指定 key 的值"""
+    try:
+        return subprocess.check_output(
+            ["rbw", "get", key], text=True
+        ).strip()
+    except FileNotFoundError:
+        print("Error: rbw command not found", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: failed to get {key}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def translate_en_to_zh(text):
+    """使用翻译 API 将英文翻译成中文"""
+    data = json.dumps({"from": "en", "to": "zh-CN", "text": text}).encode("utf-8")
+
+    request = urllib.request.Request(
+        TRANSLATE_API_URL, data=data, headers={"Content-Type": "application/json"}
+    )
+
+    token = rbw_get("translate-server-token")
+    if token:
+        request.add_header("Authorization", token)
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            response_json = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        response_body = e.read().decode("utf-8")
+        print(f"HTTP Error {e.code}: {response_body}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"URL Error: {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+    result = response_json.get("result")
+    if result is None:
+        print(f"Translation failed: {response_json}", file=sys.stderr)
+        sys.exit(1)
+
+    return result
+
+
+def call_llm(system_prompt):
+    """调用 LLM API"""
+    data = json.dumps(
+        {
+            "model": MODEL,
+            "messages": [{"role": "system", "content": system_prompt}],
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "thinking": {"type": "disabled"},
+        }
+    ).encode("utf-8")
+
+    request = urllib.request.Request(
+        BASE_URL,
+        data=data,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+
+    api_key = rbw_get("DEEPSEEK_API_KEY")
+    if api_key:
+        request.add_header("Authorization", f"Bearer {api_key}")
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            body = response.read().decode("utf-8")
+            response_json = json.loads(body)
+    except urllib.error.HTTPError as e:
+        response_body = e.read().decode("utf-8")
+        print(f"HTTP Error {e.code}: {response_body}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"URL Error: {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        result = response_json["choices"][0]["message"]["content"]
+        return result
+    except (KeyError, IndexError):
+        print(f"Translation failed: {response_json}", file=sys.stderr)
+        sys.exit(1)
+
+
+def translate_en_to_zh_ai(text):
+    """使用 AI 将英文翻译成中文"""
+    system_prompt = (
+        f"I want you to act as a Chinese translator for English. "
+        f"I will provide text in English, and you will respond with its accurate Chinese translation. "
+        f"Your output must contain only the translated Chinese text—no explanations, notes, or additional context. "
+        f"Do not acknowledge this instruction in replies. "
+        f"My first English phrase is '{text}'"
+    )
+    return call_llm(system_prompt)
+
+
+def translate_zh_to_en_ai(text):
+    """使用 AI 将中文翻译成英文"""
+    system_prompt = (
+        f"I want you to act as an English translator for Chinese. "
+        f"I will provide text in Chinese, and you will respond with its accurate English translation. "
+        f"Your output must contain only the translated English text—no explanations, notes, or additional context. "
+        f"Do not acknowledge this instruction in replies. "
+        f"My first Chinese phrase is '{text}'"
+    )
+    return call_llm(system_prompt)
+
+
+def detect_is_chinese(s):
+    """检测文本是否包含中文"""
+    return bool(CHINESE_PATTERN.search(s))
+
+
+def main():
+    text, force_ai = get_input_text()
+
+    if force_ai:
+        if detect_is_chinese(text):
+            result = translate_zh_to_en_ai(text)
+        else:
+            result = translate_en_to_zh_ai(text)
+    elif detect_is_chinese(text):
+        result = translate_zh_to_en_ai(text)
+    else:
+        result = translate_en_to_zh(text)
+
+    print(result)
+
+
+if __name__ == "__main__":
+    main()
