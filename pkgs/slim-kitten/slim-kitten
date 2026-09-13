@@ -1,0 +1,395 @@
+#!/usr/bin/env python
+"""
+A slim implementation of kitten remote control, supporting both:
+  - Unix socket (full protocol with response)
+  - TTY escape codes (no_response mode, for when socket is not available)
+
+Usage:
+  slim-kitten @ run 'cat >/tmp/out'
+  echo aaa | slim-kitten @ run 'cat >/tmp/out'
+  slim-kitten @ ls /tmp
+  slim-kitten @ --to unix:/tmp/kitty-socket run 'cat >/tmp/out'
+
+Environment:
+  KITTY_LISTEN_ON  - socket address (unix:/path or tcp:host:port)
+"""
+
+import codecs
+import json
+import os
+import re
+import secrets
+import socket
+import sys
+from base64 import standard_b64encode
+
+
+def expand_ansi_c_escapes(text: str) -> bytes:
+    r"""Expand ANSI C-style escape sequences (\n, \t, \e, \x.., etc.) to bytes.
+    Compatible with kitty's parse_send_text_bytes."""
+    # \e (escape) is a kitty extension → map it to \x1b first
+    text = re.sub(r"\\e", r"\\x1b", text)
+    return codecs.decode(text, "unicode_escape").encode("utf-8")
+
+# ── Protocol helpers ──────────────────────────────────────────────────
+
+KITTY_VERSION = [0, 26, 0]
+
+
+def encode_dcs(payload: dict) -> bytes:
+    """Encode a command as a Kitty DCS escape sequence."""
+    body = b"@kitty-cmd" + json.dumps(payload).encode("ascii")
+    return b"\x1bP" + body + b"\x1b\\"
+
+
+def write_tty(data: bytes) -> None:
+    """Write raw bytes to /dev/tty.
+
+    When inside tmux, wrap the sequence in tmux passthrough so that
+    tmux forwards the DCS sequence to the terminal rather than
+    swallowing or misinterpreting it.
+
+    When /dev/tty is unavailable (e.g. running in a subprocess without
+    a controlling terminal), fall back to writing to stdout.
+    """
+    if os.environ.get("TMUX"):
+        # tmux passthrough: wrap in DCS and escape inner ESC bytes.
+        data = (
+            b"\x1bPtmux;"
+            + data.replace(b"\x1b", b"\x1b\x1b")
+            + b"\x1b\\"
+        )
+    try:
+        with open("/dev/tty", "wb") as tty:
+            tty.write(data)
+            tty.flush()
+    except OSError:
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+
+
+# ── Socket handling ───────────────────────────────────────────────────
+
+
+def get_socket_address() -> str | None:
+    return os.environ.get("KITTY_LISTEN_ON") or None
+
+
+def parse_address_spec(spec: str) -> tuple[socket.AddressFamily, str | tuple]:
+    proto, rest = spec.split(":", 1)
+    if proto == "unix":
+        return socket.AF_UNIX, rest
+    elif proto == "tcp":
+        host, port = rest.rsplit(":", 1)
+        return socket.AF_INET, (host, int(port))
+    elif proto == "tcp6":
+        if rest.startswith("["):
+            end_bracket = rest.rfind("]")
+            if end_bracket > 0:
+                host = rest[1:end_bracket]
+                port = int(rest[end_bracket + 2 :])
+                return socket.AF_INET6, (host, port)
+        return socket.AF_INET6, (rest, 0)
+    else:
+        raise ValueError(f"Unknown protocol: {proto}")
+
+
+def make_socket(timeout: float = 10.0) -> socket.socket | None:
+    listen_on = get_socket_address()
+    if not listen_on:
+        return None
+    try:
+        family, address = parse_address_spec(listen_on)
+        sock = socket.socket(family, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        sock.connect(address)
+        return sock
+    except (OSError, ValueError) as e:
+        print(f"slim-kitten: socket connect failed: {e}", file=sys.stderr)
+        return None
+
+
+def read_response(sock: socket.socket) -> dict | None:
+    """Read a @kitty-cmd DCS response from the socket."""
+    dcs_pat = re.compile(rb"\x1bP@kitty-cmd([^\x1b]+)\x1b\\")
+    data = b""
+    sock.settimeout(None)  # blocking mode for reading
+    while True:
+        try:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        except (socket.timeout, TimeoutError):
+            continue
+        except OSError:
+            break
+    m = dcs_pat.search(data)
+    if m:
+        return json.loads(m.group(1).decode("ascii"))
+    return None
+
+
+def send_via_socket(cmd: str, payload: dict) -> dict | None:
+    """Send a single command via Unix socket and return the response."""
+    sock = make_socket()
+    if sock is None:
+        return None
+    try:
+        sock.sendall(
+            encode_dcs({"cmd": cmd, "version": KITTY_VERSION, "payload": payload})
+        )
+        sock.shutdown(socket.SHUT_WR)
+        return read_response(sock)
+    finally:
+        sock.close()
+
+
+def send_packets_via_socket(packets: list[dict]) -> dict | None:
+    """Send multiple packets over a single socket connection.
+    Used by the `run` command for streaming stdin data."""
+    sock = make_socket(30.0)  # longer timeout for streaming
+    if sock is None:
+        return None
+    try:
+        for pkt in packets:
+            dcs = {"cmd": "run", "version": KITTY_VERSION, "payload": pkt}
+            sock.sendall(encode_dcs(dcs))
+        sock.shutdown(socket.SHUT_WR)
+        return read_response(sock)
+    finally:
+        sock.close()
+
+
+# ── TTY protocol helpers ──────────────────────────────────────────────
+
+
+def send_via_tty(cmd: str, payload: dict) -> None:
+    """Send a command via /dev/tty with no_response=True."""
+    dcs = {
+        "cmd": cmd,
+        "version": KITTY_VERSION,
+        "payload": payload,
+        "no_response": True,
+    }
+    write_tty(encode_dcs(dcs))
+
+
+# ── The `run` command (supports streaming stdin) ─────────────────────
+
+
+def cmd_run(args: list[str], opts: dict) -> dict | None:
+    """
+    Execute a remote command with optional stdin forwarding.
+
+    Matches kitty's protocol:
+      - Generates stream_id via secrets.token_urlsafe()
+      - Reads stdin in 4096-byte chunks (or all at once for TTY mode)
+      - Sends each chunk as base64 in a payload, final empty data signals EOF
+      - If stdin is a TTY, sends empty data immediately
+    """
+    if not args:
+        die("run: missing command to execute")
+
+    cmdline = args
+    stream_id = secrets.token_urlsafe()
+    via_tty = opts.get("tty", False)
+    chunk_size = 4096
+
+    # Read stdin data
+    stdin_data = sys.stdin.buffer.read() if not sys.stdin.isatty() else b""
+
+    # Build packets: one per chunk + empty terminator
+    packets = []
+    if stdin_data:
+        pos = 0
+        while pos < len(stdin_data):
+            chunk = stdin_data[pos : pos + chunk_size]
+            packets.append(
+                {
+                    "stream_id": stream_id,
+                    "cmdline": cmdline,
+                    "data": standard_b64encode(chunk).decode("ascii"),
+                }
+            )
+            pos += chunk_size
+    # Empty data signals EOF (always send, even if no stdin)
+    packets.append(
+        {
+            "stream_id": stream_id,
+            "cmdline": cmdline,
+            "data": "",
+        }
+    )
+
+    if via_tty:
+        # TTY mode: send all packets sequentially, no_response on each
+        for pkt in packets:
+            send_via_tty("run", pkt)
+        return None
+
+    # Socket mode: all packets over one connection, read final response
+    result = send_packets_via_socket(packets)
+    if result is not None:
+        return result
+
+    # Fallback to TTY (no_response) when no socket available
+    for pkt in packets:
+        send_via_tty("run", pkt)
+    return None
+
+
+# ── Generic command dispatch ──────────────────────────────────────────
+
+
+def call_via_socket(cmd: str, payload: dict) -> dict | None:
+    """Call via socket, generating async_id for async commands."""
+    dcs = {"cmd": cmd, "version": KITTY_VERSION, "payload": payload}
+    sock = make_socket()
+    if sock is None:
+        return None
+    try:
+        sock.sendall(encode_dcs(dcs))
+        sock.shutdown(socket.SHUT_WR)
+        return read_response(sock)
+    finally:
+        sock.close()
+
+
+def _parse_options(args: list[str]) -> tuple[dict, list[str]]:
+    """Parse --key=value, --key value, and boolean --flag options.
+
+    Returns (options_dict, positional_args) where options_dict contains
+    the parsed --flags and positional_args is the list of remaining args.
+    """
+    payload = {}
+    i = 0
+    while i < len(args) and args[i].startswith("--"):
+        raw = args[i][2:]
+        if "=" in raw:
+            key, val = raw.split("=", 1)
+            i += 1
+        elif i + 1 < len(args) and not args[i + 1].startswith("--"):
+            key, val = raw, args[i + 1]
+            i += 2
+        else:
+            key, val = raw, True
+            i += 1
+        payload[key.replace("-", "_")] = val
+    positional = args[i:]
+    return payload, positional
+
+
+def dispatch(cmd: str, args: list[str], opts: dict) -> dict | None:
+    """Dispatch a remote command."""
+    if cmd == "run":
+        return cmd_run(args, opts)
+
+    if cmd == "kitten":
+        if not args:
+            die("kitten: missing kitten name")
+        payload = {"kitten": args[0], "args": args[1:]}
+    elif cmd == "send_text" or cmd == "send-text":
+        payload, positional = _parse_options(args)
+        if positional:
+            raw_bytes = expand_ansi_c_escapes(" ".join(positional))
+            payload["data"] = "base64:" + standard_b64encode(raw_bytes).decode("ascii")
+    elif cmd == "launch":
+        payload, positional = _parse_options(args)
+        # The launch command expects positional args (the command to run)
+        # as a list under the "args" key, NOT as a string under "data".
+        payload["args"] = positional
+    else:
+        payload, positional = _parse_options(args)
+        if positional:
+            payload["data"] = " ".join(positional)
+
+    via_tty = opts.get("tty", False)
+    if via_tty:
+        send_via_tty(cmd, payload)
+        return None
+
+    # Try socket first, fallback to tty
+    result = call_via_socket(cmd, payload)
+    if result is not None:
+        return result
+    # Fallback to TTY (no_response)
+    send_via_tty(cmd, payload)
+    return None
+
+
+# ── Entry point ───────────────────────────────────────────────────────
+
+
+def die(msg: str) -> None:
+    print(msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def usage() -> None:
+    print(f"""Usage: slim-kitten [--tty] [--to <address>] @ <command> [args...]
+
+Commands:
+  @ run CMD...            Run a command (streams stdin if piped)
+  @ ls [path]             List directory contents
+  @ launch [opts] CMD...  Launch in new window/tab
+  @ send-text "text"      Send text to active window
+  @ get-text              Get window text
+  @ detach-window         Detach current window
+  @ close-window          Close current window
+  @ kitten KITTEN [args]  Run a kitten
+  @ action ACTION         Perform an action
+""")
+
+
+def main() -> None:
+    argv = sys.argv[1:]
+
+    # Parse global options
+    opts: dict = {"tty": False}
+    while argv:
+        a = argv[0]
+        if a == "--tty":
+            opts["tty"] = True
+            argv = argv[1:]
+        elif a == "--to" and len(argv) > 1:
+            os.environ["KITTY_LISTEN_ON"] = argv[1]
+            argv = argv[2:]
+        elif a in ("-h", "--help"):
+            usage()
+            return
+        else:
+            break
+
+    # Parse command
+    if not argv:
+        usage()
+
+    if argv[0] == "@":
+        argv = argv[1:]
+
+    if not argv:
+        usage()
+
+    cmd = argv[0]
+    args = argv[1:]
+
+    result = dispatch(cmd, args, opts)
+    if result is not None:
+        if result.get("ok") is False:
+            die(f"Error: {result.get('error', 'unknown error')}")
+        if "data" in result:
+            data = result["data"]
+            if isinstance(data, str):
+                print(data, end="")
+            else:
+                print(json.dumps(data))
+        elif result.get("ok") is not True:
+            print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()
+
+# 如何捕获kitten输出到tty的数据：
+# script -f capture.log -c "kitten @ detach-window --target-tab 'hello'"

@@ -18,6 +18,7 @@
   tencent-cloud-update-ssl = pkgs.callPackage ./pkgs/tencent-cloud-update-ssl { };
   hackbook = pkgs.callPackage ./pkgs/hackbook { };
   find-project-root = pkgs.callPackage ./pkgs/find-project-root { };
+  fmt-file = pkgs.callPackage ./pkgs/fmt-file { };
   sso = pkgs.callPackage ./pkgs/sso { };
   love-yue = pkgs.callPackage ./pkgs/love-yue { };
   apprise-server = pkgs.callPackage ./pkgs/apprise-server { };
@@ -36,4 +37,8 @@
   rime-cli = pkgs.callPackage ./pkgs/rime-cli { };
   skhd-zig = pkgs.callPackage ./pkgs/skhd-zig { };
   split-audio = pkgs.callPackage ./pkgs/split-audio { };
+  slim-kitten = pkgs.callPackage ./pkgs/slim-kitten { };
+  pick-window = pkgs.callPackage ./pkgs/pick-window { };
+  copy = pkgs.callPackage ./pkgs/copy { };
+  coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
 }

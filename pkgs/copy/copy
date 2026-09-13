@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""copy — 把 stdin 的内容复制到剪切板。
+
+根据运行环境自动选择方式:
+  SSH 会话中 : 通过 OSC 52 发送到 tty
+               (\\033]52;c;BASE64\\007)
+               若同时在 tmux 会话内,用 tmux 透传序列包裹:
+               (\\033Ptmux;\\033]52;c;BASE64\\007\\033\\\\)
+  本地(非 SSH,包括本地 tmux): 调用系统剪切板工具
+               (pbcopy / wl-copy / xclip / xsel / termux-clipboard-set)
+
+用法:
+  echo hello | copy          # 复制 "hello"(去掉尾部换行)
+  cat file   | copy
+  cmd        | copy --raw    # 保留输入原样(不去除尾部换行)
+"""
+
+import base64
+import os
+import subprocess
+import sys
+
+
+def osc52(text: str) -> str:
+    """构造 OSC 52 序列(不含 tmux 包裹): ESC ] 52 ; c ; BASE64 BEL"""
+    b64 = base64.b64encode(text.encode()).decode().rstrip("=")
+    return f"\033]52;c;{b64}\007"
+
+
+def tmux_dcs(seq: str) -> str:
+    """用 tmux 透传序列包裹: ESC P tmux; ESC <seq> ESC \\"""
+    return f"\033Ptmux;\033{seq}\033\\"
+
+
+def send_to_tty(seq: str) -> bool:
+    """把序列写入 /dev/tty。返回是否写入成功。"""
+    try:
+        with open("/dev/tty", "wb") as tty:
+            tty.write(seq.encode())
+            tty.flush()
+        return True
+    except OSError:
+        return False
+
+
+def copy_local(text: str) -> bool:
+    """调用系统剪切板工具复制。返回是否有工具成功。"""
+    if sys.platform == "darwin":
+        tools = [["pbcopy"]]
+    elif "TERMUX_VERSION" in os.environ:
+        tools = [["termux-clipboard-set"]]
+    else:
+        tools = [
+            ["wl-copy"],  # Wayland
+            ["xclip", "-selection", "clipboard"],  # X11
+            ["xsel", "--clipboard", "--input"],  # X11
+            ["termux-clipboard-set"],  # Termux
+        ]
+    for tool in tools:
+        try:
+            subprocess.run(
+                tool,
+                input=text.encode(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            return True
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            continue
+    return False
+
+
+def main() -> int:
+    data = sys.stdin.buffer.read()
+    if not data:
+        return 0
+    text = data.decode("utf-8", errors="replace")
+
+    in_tmux = "TMUX" in os.environ
+    in_ssh = any(os.environ.get(k) for k in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
+
+    if in_ssh:
+        seq = osc52(text)
+        if in_tmux:
+            seq = tmux_dcs(seq)
+        if send_to_tty(seq):
+            return 0
+        # 无法写入 tty 时回退本地剪切板工具
+
+    if copy_local(text):
+        return 0
+
+    print(
+        "copy: 无法发送 OSC 52,且没有可用的剪切板工具 "
+        "(pbcopy/wl-copy/xclip/xsel/termux-clipboard-set)",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,511 @@
+#!/usr/bin/env python3
+"""coding-agent-status -- track coding agent work and view status via fzf.
+
+Commands:
+    start  [--agent NAME]     Record that the current agent started working
+    end    [--agent NAME]     Record that the current agent finished working
+    exit                      Delete the entry for the current agent
+    status                    Pick a coding agent window/pane with fzf and focus it
+
+Supports both kitty and tmux.  In kitty, start/end/exit notify through the kitten
+proxy to resolve target_window_id.  In tmux, start/end/exit write/delete directly
+using TMUX_PANE as the window ID.
+
+Cache files (one per window/pane):
+    kitty: ~/.cache/coding-agent-status/kitty/{window_id}.json
+    tmux:  ~/.cache/coding-agent-status/tmux/{pane_id}.json
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+CACHE_DIR = Path.home() / ".cache" / "coding-agent-status"
+KITTEN_SCRIPT = "scripts/coding_agent_status.py"
+
+print(1)
+
+os.environ.setdefault("FZF_DEFAULT_OPTS_FILE", str(Path.home() / ".fzfrc"))
+
+# ── terminal detection ─────────────────────────────────────────────────────
+
+
+def _is_tmux() -> bool:
+    return bool(os.environ.get("TMUX"))
+
+
+def _is_kitty() -> bool:
+    return bool(os.environ.get("KITTY_WINDOW_ID"))
+
+
+def _terminal_type() -> str:
+    if _is_tmux():
+        return "tmux"
+    return "kitty"
+
+
+def _entries_dir(tt: str = "") -> Path:
+    return CACHE_DIR / (_terminal_type() if not tt else tt)
+
+
+def _entry_path(window_id: str, tt: str = "") -> Path:
+    return _entries_dir(tt) / f"{window_id}.json"
+
+
+def _current_window_id() -> str:
+    """Return the current window/pane ID based on terminal type."""
+    if _is_tmux():
+        return os.environ.get("TMUX_PANE", "?")
+    if _is_kitty():
+        return os.environ.get("KITTY_WINDOW_ID", "?")
+    return "?"
+
+
+# ── helpers ────────────────────────────────────────────────────────────────
+
+
+def now_iso() -> str:
+    return (
+        datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    )
+
+
+def relative_time(ts: str) -> str:
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    diff = (datetime.now(timezone.utc) - dt).total_seconds()
+    if diff < 60:
+        return f"{int(diff)}s"
+    if diff < 3600:
+        return f"{int(diff / 60)}m"
+    if diff < 86400:
+        return f"{int(diff / 3600)}h"
+    return f"{int(diff / 86400)}d"
+
+
+def slim_kitten(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["slim-kitten", *args],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+
+def b64enc(s: str) -> str:
+    return base64.b64encode(s.encode("utf-8")).decode("ascii")
+
+
+def _atomic_write(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="entry.", suffix=".json", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+
+# ── entry I/O ──────────────────────────────────────────────────────────────
+
+
+def read_entry(path: Path) -> dict | None:
+    """Read a single entry file. Returns None if missing or invalid."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def read_all_entries(tt: str = "") -> dict[str, dict]:
+    """Read all entry files from the terminal's cache directory."""
+    d = _entries_dir(tt)
+    entries: dict[str, dict] = {}
+    if not d.is_dir():
+        return entries
+    for f in sorted(d.iterdir()):
+        if f.suffix == ".json":
+            entry = read_entry(f)
+            if entry:
+                entries[f.stem] = entry
+    return entries
+
+
+# ── entry construction ─────────────────────────────────────────────────────
+
+
+def build_entry(
+    event: str,
+    agent: str,
+    cwd: str,
+    added: int,
+    deleted: int,
+    numstat: str,
+    session: str = "",
+) -> dict:
+    return {
+        "agent": agent,
+        "cwd": cwd,
+        "session": session,
+        "working": event == "start",
+        "event": event,
+        "added": added,
+        "deleted": deleted,
+        "numstat": numstat,
+        "updatedAt": now_iso(),
+    }
+
+
+# ── git helpers ────────────────────────────────────────────────────────────
+
+
+def git_numstat() -> tuple[str, int, int]:
+    """Return (raw numstat, total added, total deleted)."""
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--numstat"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        raw = r.stdout.strip()
+    except Exception:
+        raw = ""
+
+    added = deleted = 0
+    for line in raw.split("\n"):
+        parts = line.split("\t")
+        if len(parts) >= 2:
+            try:
+                added += int(parts[0])
+            except ValueError:
+                pass
+            try:
+                deleted += int(parts[1])
+            except ValueError:
+                pass
+    return raw, added, deleted
+
+
+# ── fzf line formatting ────────────────────────────────────────────────────
+
+
+def _format_fzf_line(wid: str, entry: dict, max_cwd: int) -> str:
+    working = bool(entry.get("working"))
+    added = int(entry.get("added") or 0)
+    deleted = int(entry.get("deleted") or 0)
+    session = entry.get("session") or ""
+    cwd = entry.get("cwd") or ""
+    base = session or Path(cwd).name or "?"
+    updated = relative_time(entry.get("updatedAt", ""))
+
+    if working:
+        icon = "\033[38;5;214m\033[0m"  # amber spinner
+    else:
+        icon = "\033[38;5;114m󰗡\033[0m"  # green check
+
+    cwd_padded = base.ljust(max_cwd)
+
+    added_padded = f"+{added}".rjust(5)
+    deleted_padded = f"-{deleted}".rjust(5)
+    added_str = f"\033[38;5;114m{added_padded}\033[0m"
+    deleted_str = f"\033[38;5;203m{deleted_padded}\033[0m"
+    updated_str = f"\033[38;5;244m{updated:>5}\033[0m"
+
+    line = f"{icon} {cwd_padded}  {added_str} {deleted_str}  {updated_str}"
+    return f"{wid}\t{line}"
+
+
+# ── kitty helpers ──────────────────────────────────────────────────────────
+
+
+def _live_kitty_window_ids() -> set[str]:
+    r = slim_kitten("@", "ls")
+    windows = json.loads(r.stdout)
+    ids: set[str] = set()
+    for item in windows if isinstance(windows, list) else []:
+        tabs = item.get("tabs", []) if isinstance(item, dict) else []
+        for tab in tabs if isinstance(tabs, list) else []:
+            for w in tab.get("windows", []) if isinstance(tab, dict) else []:
+                if isinstance(w, dict):
+                    wid = w.get("id")
+                    if wid is not None:
+                        ids.add(str(wid))
+    return ids
+
+
+def _focused_kitty_window_id() -> str | None:
+    try:
+        r = slim_kitten("@", "ls")
+        windows = json.loads(r.stdout)
+    except Exception:
+        return None
+    for item in windows if isinstance(windows, list) else []:
+        tabs = item.get("tabs", []) if isinstance(item, dict) else []
+        for tab in tabs if isinstance(tabs, list) else []:
+            for w in tab.get("windows", []) if isinstance(tab, dict) else []:
+                if isinstance(w, dict) and w.get("is_focused"):
+                    wid = w.get("id")
+                    if wid is not None:
+                        return str(wid)
+    return None
+
+
+def _focus_kitty_window(window_id: str) -> None:
+    try:
+        slim_kitten("@", "focus-window", "--match", f"id:{window_id}")
+    except Exception:
+        pass
+
+
+def _notify_kitty(*args: str) -> None:
+    """Send a command to the kitty kitten proxy."""
+    try:
+        subprocess.run(
+            [
+                "slim-kitten",
+                "--tty",
+                "@",
+                "kitten",
+                KITTEN_SCRIPT,
+                *args,
+            ],
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            text=True,
+            timeout=15,
+        )
+    except Exception:
+        pass
+
+
+# ── tmux helpers ───────────────────────────────────────────────────────────
+
+
+def _live_tmux_pane_ids() -> set[str]:
+    try:
+        r = subprocess.run(
+            ["tmux", "list-panes", "-a", "-F", "#{pane_id}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return {line.strip() for line in r.stdout.strip().split("\n") if line.strip()}
+    except Exception:
+        return set()
+
+
+def _focused_tmux_pane_id() -> str | None:
+    try:
+        r = subprocess.run(
+            ["tmux", "display-message", "-p", "#{pane_id}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return r.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def _focus_tmux_pane(pane_id: str) -> None:
+    r = subprocess.run(
+        ["tmux", "display-message", "-p", "-t", pane_id, "-F", "#{window_id}"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    window_id = r.stdout.strip()
+    if window_id:
+        subprocess.run(
+            ["tmux", "select-window", "-t", window_id],
+            capture_output=True,
+            timeout=5,
+        )
+    subprocess.run(
+        ["tmux", "select-pane", "-t", pane_id],
+        capture_output=True,
+        timeout=5,
+    )
+
+
+# ── commands ───────────────────────────────────────────────────────────────
+
+
+def cmd_start_end(event: str, agent: str, session: str = "") -> None:
+    """Collect git diff, build the entry, and write it."""
+    numstat, added, deleted = git_numstat()
+    window_id = _current_window_id()
+
+    entry = build_entry(event, agent, os.getcwd(), added, deleted, numstat, session)
+
+    if _is_tmux():
+        _atomic_write(_entry_path(window_id), entry)
+    else:
+        content = json.dumps(entry, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        _notify_kitty("write", "--content-b64", b64enc(content))
+
+
+def cmd_exit() -> None:
+    """Delete the entry for the current window/pane."""
+    if _is_tmux():
+        try:
+            _entry_path(_current_window_id()).unlink()
+        except FileNotFoundError:
+            pass
+    else:
+        _notify_kitty("delete")
+
+
+def _do_status(
+    tt: str,
+    live_ids: set[str],
+    preview_cmd: str,
+    focused_id: str | None,
+    focus_fn,
+    label: str,
+) -> None:
+    """Core status logic: read entries, clean stale, run fzf, focus."""
+    entries = read_all_entries(tt)
+
+    # Clean stale entries
+    stale = [wid for wid in entries if wid not in live_ids]
+    for wid in stale:
+        try:
+            _entry_path(wid, tt).unlink()
+        except FileNotFoundError:
+            pass
+        del entries[wid]
+
+    if not entries:
+        max_cwd = 1
+        sorted_entries: list[tuple[str, dict]] = []
+        fzf_input = ""
+    else:
+        max_cwd = max(
+            (
+                len((e.get("session") or "") or (Path(e.get("cwd") or "").name or "?"))
+                for e in entries.values()
+                if isinstance(e, dict)
+            ),
+            default=1,
+        )
+        sorted_entries = sorted(
+            entries.items(),
+            key=lambda kv: kv[1].get("updatedAt", ""),
+            reverse=True,
+        )
+        fzf_input = "\n".join(
+            _format_fzf_line(k, v, max_cwd) for k, v in sorted_entries
+        )
+
+    fzf_extra_args: list[str] = []
+    if focused_id and focused_id in entries:
+        fzf_extra_args = ["--select-1"]
+
+    try:
+        result = subprocess.run(
+            [
+                "fzf",
+                f"--prompt={label}> ",
+                "--header=enter: focus",
+                "--preview-window=right:70%,nowrap,border-left",
+                "--ansi",
+                "--delimiter=\t",
+                "--with-nth=2",
+                "--no-sort",
+                "--preview",
+                preview_cmd,
+                *fzf_extra_args,
+            ],
+            input=fzf_input,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        sys.exit(0)
+
+    selection = result.stdout.strip()
+    if not selection:
+        sys.exit(0)
+
+    window_id = selection.split("\t")[0]
+    if window_id:
+        focus_fn(window_id)
+
+
+def cmd_status() -> None:
+    """Show fzf picker for coding agent windows/panes."""
+    if _is_tmux():
+        _do_status(
+            tt="tmux",
+            live_ids=_live_tmux_pane_ids(),
+            preview_cmd="tmux capture-pane -t {1} -p -e -S -60",
+            focused_id=_focused_tmux_pane_id(),
+            focus_fn=_focus_tmux_pane,
+            label="tmux agents",
+        )
+    else:
+        _do_status(
+            tt="kitty",
+            live_ids=_live_kitty_window_ids(),
+            preview_cmd="slim-kitten @ get-text --match 'id:{1}' --extent screen --ansi",
+            focused_id=_focused_kitty_window_id(),
+            focus_fn=_focus_kitty_window,
+            label="coding agents",
+        )
+
+
+# ── entry point ────────────────────────────────────────────────────────────
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="coding-agent-status", add_help=False)
+    subs = parser.add_subparsers(dest="command", required=True)
+
+    st = subs.add_parser("start", add_help=False)
+    st.add_argument("--agent", default="pi")
+    st.add_argument("--session", default="")
+
+    en = subs.add_parser("end", add_help=False)
+    en.add_argument("--agent", default="pi")
+    en.add_argument("--session", default="")
+
+    ex = subs.add_parser("exit", add_help=False)
+    ex.add_argument("--session", default="")
+
+    subs.add_parser("status", add_help=False)
+
+    parser.add_argument("-h", "--help", action="help")
+
+    args = parser.parse_args()
+
+    if args.command in ("start", "end"):
+        cmd_start_end(args.command, args.agent, getattr(args, "session", ""))
+    elif args.command == "exit":
+        cmd_exit()
+    elif args.command == "status":
+        cmd_status()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export FZF_DEFAULT_OPTS_FILE=~/.fzfrc
+
+press_any_key() {
+  if [[ -r /dev/tty ]]; then
+    printf 'Press any key to exit...' >&2
+    IFS= read -r -n 1 _ </dev/tty || true
+    printf '\n' >&2
+  fi
+}
+
+die() {
+  printf 'pick-window: %s\n' "$*" >&2
+  press_any_key
+  exit 1
+}
+
+_is_tmux() {
+  [[ -n "${TMUX:-}" ]]
+}
+
+pick_window_preview() {
+  case "$1" in
+  w)
+    if _is_tmux; then
+      IFS='|' read -r _wid pid <<<"$2"
+      tmux capture-pane -t "$pid" -p -e -S -60 2>/dev/null || echo "(unavailable)"
+    else
+      slim-kitten @ get-text --match "id:$2" --extent screen --ansi 2>/dev/null || echo "(unavailable)"
+    fi
+    ;;
+  d)
+    printf '%s\n\n' "$2"
+    # filenames here are interactive paths; ls colors are desired
+    # shellcheck disable=SC2012
+    ls --color=always "$2" | head -70
+    ;;
+  esac
+}
+
+pick_window_items() {
+  if _is_tmux; then
+    tmux list-panes -a -F '#{window_id}|#{pane_id}|#{pane_title}|#{pane_current_path}|#{window_name}' 2>/dev/null |
+      while IFS='|' read -r win_id pid title cwd win; do
+        [[ -z "$title" ]] && title="$win"
+        target="${win_id}|${pid}"
+        printf 'w\t%s\t\033[38;5;75m󰖲 \033[0m\033[38;5;214m%s\033[0m  \033[38;5;245m%s\033[0m\n' "$target" "$title" "$cwd"
+      done
+  else
+    slim-kitten @ ls --match 'not state:focused' 2>/dev/null |
+      jq -r '
+        [.[].tabs[].windows[]]
+        | sort_by(-.last_focused_at)[]
+        | [
+            "w",
+            (.id | tostring),
+            ("\u001b[38;5;75m󰖲 \u001b[0m" + (if (.title // "") == "" then "(untitled)" else .title end))
+          ]
+        | @tsv
+      ' || die 'failed to list kitty windows; run inside kitty or configure remote control'
+  fi
+
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    display_dir="$dir"
+    case "$display_dir" in
+    "$HOME") display_dir='~' ;;
+    "$HOME"/*) display_dir=~/"/${display_dir#"$HOME"/}" ;;
+    esac
+    printf 'd\t%s\t\033[38;5;114m󰉋 \033[0m%s\n' "$dir" "$display_dir"
+  done < <(zoxide query --list)
+}
+
+pick_window_delete() {
+  [[ $# -ge 2 ]] || return 0
+
+  case "$1" in
+  w)
+    if _is_tmux; then
+      IFS='|' read -r wid pid <<<"$2"
+      tmux select-window -t "$wid" \; kill-pane -t "$pid" 2>/dev/null || true
+    else
+      slim-kitten @ close-window --match "id:$2" 2>/dev/null || true
+    fi
+    ;;
+  d)
+    zoxide remove "$2"
+    ;;
+  esac
+}
+
+export -f press_any_key die pick_window_preview pick_window_items pick_window_delete _is_tmux
+
+bash_path="${BASH:-}"
+if [[ -z "$bash_path" ]]; then
+  bash_path="$(command -v bash)" || die 'failed to find bash'
+fi
+
+if _is_tmux; then
+  prompt_label='tmux'
+else
+  prompt_label='kitty'
+fi
+
+SHELL="$bash_path" selection="$(pick_window_items | fzf \
+  --prompt="${prompt_label}> " \
+  --header='enter: switch/open  ctrl-e: open dir in nvim  ctrl-d: close/remove' \
+  --preview-window=border-left \
+  --ansi \
+  --delimiter=$'\t' \
+  --with-nth=3 \
+  --nth=1 \
+  --no-sort \
+  --exact \
+  --expect=ctrl-e \
+  --bind 'ctrl-d:execute-silent(bash -c "pick_window_delete {1} {2}")+reload(pick_window_items)' \
+  --preview-window='right:70%,nowrap,follow' \
+  --preview 'pick_window_preview {1} {2}')" || exit 0
+
+key="${selection%%$'\n'*}"
+selected="${selection#*$'\n'}"
+[[ -n "$selected" && "$selected" != "$selection" ]] || exit 0
+
+IFS=$'\t' read -r kind target _display <<<"$selected"
+
+case "$kind:$key" in
+w:*)
+  if _is_tmux; then
+    IFS='|' read -r wid pid <<<"$target"
+    tmux select-window -t "$wid" \; select-pane -t "$pid"
+  else
+    slim-kitten @ focus-window --match "id:$target"
+  fi
+  ;;
+d:ctrl-e)
+  if _is_tmux; then
+    window_id="$(tmux new-window -P -a -c "$target" -n "nvim" 2>/dev/null)"
+    tmux send-keys -t "$window_id" 'nvim' Enter
+  else
+    window_id="$(slim-kitten @ launch --type=tab --location=after --cwd "$target")"
+    slim-kitten @ send-text --match "id:$window_id" 'nvim\n'
+  fi
+  ;;
+d:*)
+  if _is_tmux; then
+    tmux new-window -a -c "$target" >/dev/null
+  else
+    slim-kitten @ launch --type=tab --location=after --cwd "$target" >/dev/null
+  fi
+  ;;
+*)
+  die "unknown selection type: $kind"
+  ;;
+esac

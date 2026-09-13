@@ -1,0 +1,537 @@
+#!/usr/bin/env python3
+"""fmt-file —— 把 stdin 交给对应的格式化器，结果写到 stdout。
+
+唯一入口是 fmt-file。原 fmt-code-in-md（格式化 Markdown 里的围栏代码块）
+不再是独立命令，而是在处理 Markdown 时以内部函数调用的方式完成。
+
+用法：
+    fmt-file -l <lang> [-n <name>]   # 按语言（可配合文件名）格式化 stdin
+    fmt-file -f <formatter>          # 使用指定的特殊格式化器（目前支持 golines）
+
+选项：
+    -l, --lang       语言名（通常直接传编辑器的 filetype），缺省时按 -n 的扩展名推断
+    -n, --name       文件名或 basename，用于让格式化器推断语法/起始名
+    -f, --formatter  特殊格式化器，与 -l 互斥
+
+各个外部格式化器（nixfmt/shfmt/ruff/biome/prettierd/...）从 PATH 里查找。
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from collections.abc import Callable
+
+# ---------------------------------------------------------------------------
+# 异常与子进程
+# ---------------------------------------------------------------------------
+
+
+class UserError(Exception):
+    """参数/语言之类的问题，直接把消息打到 stderr 并退出。"""
+
+    def __init__(self, message: str, code: int = 1):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+class FormatterError(Exception):
+    """外部格式化器执行失败。"""
+
+    def __init__(self, cmd: list[str], returncode: int, stdout: str, stderr: str):
+        super().__init__(f"{cmd[0]} exited with code {returncode}")
+        self.cmd = cmd
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def run_cmd(cmd: list[str], text: str) -> str:
+    """把 text 从 stdin 喂给 cmd，返回 stdout；非零退出码抛 FormatterError。"""
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=text,
+            encoding="utf-8",
+            errors="surrogateescape",
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        raise FormatterError(cmd, 127, "", f"{cmd[0]}: command not found\n")
+    if proc.returncode != 0:
+        raise FormatterError(cmd, proc.returncode, proc.stdout, proc.stderr)
+    return proc.stdout
+
+
+def run_with_tempfile(
+    text: str,
+    suffix: str,
+    cmd: Callable[[str], list[str]],
+    read_back: bool = False,
+) -> str:
+    """部分格式化器只认文件路径，这里写临时文件再调用。
+
+    read_back=True 表示格式化器是就地改写（如 go work edit -fmt），
+    需要把改写后的文件内容读回来当结果。
+    """
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    try:
+        with os.fdopen(
+            fd, "w", encoding="utf-8", errors="surrogateescape", newline=""
+        ) as f:
+            f.write(text)
+        out = run_cmd(cmd(path), "")
+        if read_back:
+            with open(
+                path, encoding="utf-8", errors="surrogateescape", newline=""
+            ) as f:
+                out = f.read()
+        return out
+    finally:
+        os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# 具体格式化器
+# ---------------------------------------------------------------------------
+
+
+def fmt_clang(text: str, name: str) -> str:
+    return run_cmd(
+        ["clang-format", f"--assume-filename={name}", "--Wno-error=unknown"], text
+    )
+
+
+def fmt_prettier(text: str, name: str) -> str:
+    return run_cmd(["prettierd", name], text)
+
+
+def fmt_biome(text: str, name: str, stdin_path: str | None = None) -> str:
+    return run_cmd(
+        [
+            "biome",
+            "format",
+            "--stdin-file-path",
+            stdin_path or name,
+            "--indent-style",
+            "space",
+        ],
+        text,
+    )
+
+
+def fmt_json(text: str, name: str) -> str:
+    # 原来是固定用一个 .jsonc 路径，让 biome 按 JSONC 解析
+    return fmt_biome(text, name, "a.jsonc")
+
+
+def fmt_thrift(text: str, name: str) -> str:
+    return run_with_tempfile(
+        text, ".thrift", lambda p: ["thrift-fmt", "-i", "2", "--no-patch", p]
+    )
+
+
+def fmt_just(text: str, name: str) -> str:
+    return run_with_tempfile(text, "", lambda p: ["just", "--dump", "-f", p])
+
+
+def fmt_proto(text: str, name: str) -> str:
+    return run_with_tempfile(text, ".proto", lambda p: ["buf", "format", p])
+
+
+def fmt_gowork(text: str, name: str) -> str:
+    return run_with_tempfile(
+        text, ".work", lambda p: ["go", "work", "edit", "-fmt", p], read_back=True
+    )
+
+
+def fmt_xml(text: str, name: str) -> str:
+    return run_with_tempfile(text, ".xml", lambda p: ["xmllint", "--format", p])
+
+
+def fmt_stylua(text: str, name: str) -> str:
+    return run_cmd(
+        [
+            "stylua",
+            "--indent-type",
+            "Spaces",
+            "--indent-width",
+            "2",
+            "--quote-style",
+            "AutoPreferSingle",
+            "--line-endings",
+            "Unix",
+            "--call-parentheses",
+            "None",
+            "--column-width",
+            "120",
+            "--collapse-simple-statement",
+            "Always",
+            "-",
+        ],
+        text,
+    )
+
+
+# 语言 -> 格式化器。key 是「规范语言名」，别名在 _GROUPS/_ALIASES 里归一化。
+FORMATTERS: dict[str, Callable[[str, str], str]] = {
+    "nix": lambda text, name: run_cmd(["nixfmt", "-"], text),
+    "sh": lambda text, name: run_cmd(["shfmt", "-i", "2", "-"], text),
+    "fish": lambda text, name: run_cmd(["fish_indent"], text),
+    "sql": lambda text, name: run_cmd(
+        ["sqlfluff", "format", "--dialect=ansi", "-"], text
+    ),
+    "toml": lambda text, name: run_cmd(
+        [
+            "taplo",
+            "fmt",
+            "--option",
+            "inline_table_expand=false",
+            "--option",
+            "align_entries=true",
+            "--option",
+            "indent_tables=true",
+            "-",
+        ],
+        text,
+    ),
+    "go": lambda text, name: run_cmd(["gofumpt"], text),
+    "python": lambda text, name: run_cmd(
+        ["ruff", "format", "--stdin-filename", name, "-"], text
+    ),
+    "nginx": lambda text, name: run_cmd(["nginxfmt", "-i", "2", "-"], text),
+    "d2": lambda text, name: run_cmd(["d2", "fmt", "-"], text),
+    "java": lambda text, name: run_cmd(["google-java-format", "-"], text),
+    "lua": fmt_stylua,
+    "rust": lambda text, name: run_cmd(["rustfmt", "--edition", "2018"], text),
+    "swift": lambda text, name: run_cmd(
+        ["swiftformat", "--output", "stdout", "--quiet"], text
+    ),
+    "http": lambda text, name: run_cmd(["kulala-fmt", "format", "--stdin"], text),
+    "json": fmt_json,
+    "biome": fmt_biome,
+    "prettier": fmt_prettier,
+    "md": fmt_prettier,
+    "c": fmt_clang,
+    "thrift": fmt_thrift,
+    "just": fmt_just,
+    "proto": fmt_proto,
+    "gowork": fmt_gowork,
+    "xml": fmt_xml,
+    # 暂时没有可用格式化器，原样透传
+    "kdl": lambda text, name: text,
+    "ini": lambda text, name: text,
+}
+
+# 规范语言名 -> 该组下的所有写法
+_GROUPS: dict[str, list[str]] = {
+    "sh": ["sh", "bash", "shellscript", "zsh"],
+    "python": ["python", "py", "ipynb"],
+    "go": ["go", "golang"],
+    "rust": ["rust", "rs"],
+    "nginx": ["nginx", "conf"],
+    "c": ["c", "cc", "h", "hpp", "cpp", "hh", "arduino", "ino"],
+    "biome": [
+        "jsonc",
+        "js",
+        "ts",
+        "jsx",
+        "tsx",
+        "mjs",
+        "mts",
+        "typescriptreact",
+        "javascriptreact",
+        "typescript",
+        "javascript",
+        "css",
+    ],
+    "prettier": ["vue", "scss", "less", "html", "yaml", "yml"],
+    "md": ["md", "markdown"],
+}
+
+_ALIASES: dict[str, str] = {}
+for _canonical, _names in _GROUPS.items():
+    for _name in _names:
+        _ALIASES[_name] = _canonical
+
+# #!/usr/bin/env node 这类 shebang 的兜底
+_ALIASES["node"] = "biome"
+
+
+def canonical_language(language: str) -> str:
+    lang = language.strip().lower()
+    return _ALIASES.get(lang, lang)
+
+
+# ---------------------------------------------------------------------------
+# Markdown 围栏代码块（原 fmt-code-in-md）
+# ---------------------------------------------------------------------------
+
+_FENCE_OPEN = re.compile(r"^\s*```\s*(\w+)\s*$")
+_FENCE_CLOSE = re.compile(r"\s*```\s*")
+_CONSOLE_CONTINUATION = re.compile(r".*(\\|\||&&)\n")
+
+
+def format_text(language: str, name: str, text: str, nested: bool = False) -> str:
+    """按语言格式化一段文本。nested=True 表示这是 Markdown 内部的代码块。"""
+    canonical = canonical_language(language)
+    formatter = FORMATTERS.get(canonical)
+    if formatter is None:
+        raise UserError(f"no formatter for {language}")
+    # Markdown：先格式化围栏里的代码块，再交给 prettier 排版。
+    # prettier 放在最后，它会把嵌套代码块的内容重新缩进到正确位置。
+    # nested 时不再递归处理代码块，避免 md 套 md 时无限递归。
+    if canonical == "md" and not nested:
+        text = format_fenced_blocks(text)
+    return formatter(text, name)
+
+
+def format_block(language: str, code_lines: list[str]) -> str:
+    """格式化 Markdown 里的一个代码块，失败时保留原文（和旧的 fmt-code-in-md 一致）。
+
+    这里用该语言自己的默认文件名（_stdin_file.xxx），不能用外层 Markdown 的名字，
+    否则 ruff/biome/prettierd 会按 .md 去处理导致代码块被跳过。
+    """
+    if language == "console":
+        return format_console(code_lines)
+    text = "".join(code_lines)
+    try:
+        return format_text(language, _default_name(language), text, nested=True)
+    except (UserError, FormatterError):
+        return text
+
+
+def format_console(code_lines: list[str]) -> str:
+    """console 代码块：把以 `$ ` 开头的命令（含续行）交给 shfmt。"""
+    out: list[str] = []
+    i = 0
+    while i < len(code_lines):
+        if not code_lines[i].startswith("$ "):
+            out.append(code_lines[i])
+            i += 1
+            continue
+        # 一直吃到第一个不以 \ | && 结尾的行（含该行）
+        j = i
+        while j < len(code_lines) and _CONSOLE_CONTINUATION.fullmatch(code_lines[j]):
+            j += 1
+        bash_code = [code_lines[i][2:]] + code_lines[i + 1 : j + 1]
+        out.append("$ " + format_block("sh", bash_code))
+        i = j + 1
+    return "".join(out)
+
+
+def format_fenced_blocks(text: str) -> str:
+    """把 Markdown 中带语言标注的 ```lang 代码块格式化，其余内容原样保留。"""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        match = _FENCE_OPEN.search(lines[i])
+        if not match:
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and not _FENCE_CLOSE.fullmatch(lines[j]):
+            j += 1
+        if j >= len(lines):
+            # 围栏没有闭合，后面的内容原样输出
+            out.extend(lines[i:])
+            break
+        out.append(lines[i])
+        out.append(format_block(match.group(1), lines[i + 1 : j]))
+        out.append(lines[j])
+        i = j + 1
+    return "".join(out)
+
+
+# ---------------------------------------------------------------------------
+# -f 指定的特殊格式化器
+# ---------------------------------------------------------------------------
+
+
+def fmt_golines(text: str) -> str:
+    """golines：选中的可能只是代码片段，先用 package/func 包一层再格式化，最后拆掉。"""
+    text = text.rstrip("\n")
+    has_package = re.search(r"(^|\n)package", text) is not None
+    has_func = re.search(r"(^|\n)func", text) is not None
+
+    if not has_func:
+        header = "func __tmp_func() {"
+        wrapped = f"package __tmp_package\n{header}\n{text}\n}}\n"
+        out = run_cmd(["golines", "--base-formatter=gofmt"], wrapped)
+        return _unwrap_golines(out, header, close="}")
+    if not has_package:
+        header = "package __tmp_package"
+        out = run_cmd(["golines", "--base-formatter=gofmt"], f"{header}\n{text}\n")
+        return _unwrap_golines(out, header)
+    return run_cmd(["golines", "--base-formatter=gofmt"], text + "\n")
+
+
+def _unwrap_golines(out: str, header: str, close: str | None = None) -> str:
+    lines = out.split("\n")
+    for idx, line in enumerate(lines):
+        if line == header:
+            lines = lines[idx + 1 :]
+            break
+    # gofmt 会在 package 子句和 func 声明之间插一个空行
+    if lines and lines[0] == "":
+        lines.pop(0)
+    if lines and lines[-1] == "":
+        lines.pop()
+    if close is not None and lines and lines[-1] == close:
+        lines.pop()
+    return "\n".join(lines) + "\n"
+
+
+SPECIAL_FORMATTERS: dict[str, Callable[[str], str]] = {
+    "golines": fmt_golines,
+}
+
+
+# ---------------------------------------------------------------------------
+# 语言/文件名的推断
+# ---------------------------------------------------------------------------
+
+
+# 没给 -n 时用的默认文件名；值是扩展名
+_DEFAULT_NAME_EXT = {
+    "javascript": "js",
+    "typescript": "ts",
+    "markdown": "md",
+    "python": "py",
+    "golang": "go",
+    "rust": "rs",
+    "typescriptreact": "tsx",
+    "javascriptreact": "jsx",
+    "arduino": "ino",
+}
+
+# 无扩展名时按 shebang 猜（顺序有意义：bash 要在 sh 之前）
+_SHEBANG_LANGS = [
+    ("bash", "bash"),
+    ("fish", "fish"),
+    ("node", "node"),
+    ("python", "python"),
+    ("sh", "sh"),
+]
+
+
+def _default_name(language: str) -> str:
+    return f"_stdin_file.{_DEFAULT_NAME_EXT.get(language, language)}"
+
+
+def _first_line_of_file(path: str) -> str | None:
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
+            return f.readline()
+    except OSError:
+        return None
+
+
+def _detect_language(name: str, stdin_text: str) -> str:
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if ext:
+        return ext
+    # 没有扩展名：先看磁盘上的同名文件，再看 stdin 的第一行
+    candidates = [_first_line_of_file(name), stdin_text.split("\n", 1)[0]]
+    for line in candidates:
+        if not line:
+            continue
+        for needle, language in _SHEBANG_LANGS:
+            if needle in line:
+                return language
+    raise UserError("unable to detect language")
+
+
+def fix_lang(language: str, name: str, stdin_text: str) -> tuple[str, str]:
+    """补齐语言和文件名，对应原来 bash 里的 fix_lang。"""
+    if not language:
+        if not name:
+            raise UserError("unable to detect language")
+        language = _detect_language(name, stdin_text)
+    if not name:
+        name = _default_name(language)
+    return language, name
+
+
+# ---------------------------------------------------------------------------
+# 入口
+# ---------------------------------------------------------------------------
+
+_USAGE = "usage: fmt-file [-l lang] [-n name] | fmt-file -f formatter"
+
+
+def parse_args(argv: list[str]) -> tuple[str, str, str]:
+    language = ""
+    formatter = ""
+    name = ""
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-h", "--help"):
+            print(__doc__.strip())
+            raise SystemExit(0)
+        if arg in ("-l", "--lang", "-f", "--formatter", "-n", "--name"):
+            if i + 1 >= len(argv):
+                raise UserError(f"Unknown option: {arg}\n{_USAGE}")
+            value = argv[i + 1]
+            if arg in ("-l", "--lang"):
+                language = value
+            elif arg in ("-f", "--formatter"):
+                formatter = value
+            else:
+                name = value
+            i += 2
+            continue
+        raise UserError(f"Unknown option: {arg}\n{_USAGE}")
+    return language, formatter, name
+
+
+def main(argv: list[str]) -> int:
+    try:
+        language, formatter, name = parse_args(argv)
+
+        if not language and not name and not formatter:
+            raise UserError("missing --lang and --name")
+
+        text = sys.stdin.read()
+
+        if formatter:
+            special = SPECIAL_FORMATTERS.get(formatter)
+            if special is None:
+                raise UserError(f"formatter {formatter} not config")
+            result = special(text)
+        else:
+            language, name = fix_lang(language, name, text)
+            result = format_text(language, name, text)
+
+        sys.stdout.write(result)
+        sys.stdout.flush()
+        return 0
+    except UserError as err:
+        print(err.message, file=sys.stderr)
+        return err.code
+    except FormatterError as err:
+        # 和 bash 版本一致：出错时把子进程的 stdout/stderr 原样透传，并返回它的退出码
+        if err.stdout:
+            sys.stdout.write(err.stdout)
+            sys.stdout.flush()
+        if err.stderr:
+            sys.stderr.write(err.stderr)
+            sys.stderr.flush()
+        return err.returncode
+
+
+if __name__ == "__main__":
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="surrogateescape")
+        except (AttributeError, ValueError):
+            pass
+    sys.exit(main(sys.argv[1:]))
