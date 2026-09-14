@@ -41,4 +41,5 @@
   pick-window = pkgs.callPackage ./pkgs/pick-window { };
   copy = pkgs.callPackage ./pkgs/copy { };
   coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
+  sops-render = pkgs.callPackage ./pkgs/sops-render { };
 }
