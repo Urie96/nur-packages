@@ -38,7 +38,7 @@ KITTY_VERSION = [0, 26, 0]
 
 def encode_dcs(payload: dict) -> bytes:
     """Encode a command as a Kitty DCS escape sequence."""
-    body = b"@kitty-cmd" + json.dumps(payload).encode("ascii")
+    body = b"@kitty-cmd" + json.dumps(payload, separators=(",", ":")).encode("ascii")
     return b"\x1bP" + body + b"\x1b\\"
 
 
@@ -289,6 +289,16 @@ def dispatch(cmd: str, args: list[str], opts: dict) -> dict | None:
         if not args:
             die("kitten: missing kitten name")
         payload = {"kitten": args[0], "args": args[1:]}
+    elif cmd == "action":
+        # The action command takes the action name plus its arguments as a
+        # single space-joined string under the "action" key:
+        #   {"action": "open_url https://example.com"}
+        payload, positional = _parse_options(args)
+        if positional:
+            payload["action"] = " ".join(positional)
+        # kitty's action command names its window matcher "match_window".
+        if "match" in payload:
+            payload["match_window"] = payload.pop("match")
     elif cmd == "send_text" or cmd == "send-text":
         payload, positional = _parse_options(args)
         if positional:
