@@ -44,4 +44,5 @@
   coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
   sops-render = pkgs.callPackage ./pkgs/sops-render { };
   xopen = pkgs.callPackage ./pkgs/xopen { };
+  apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
 }
