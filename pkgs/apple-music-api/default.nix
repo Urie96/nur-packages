@@ -9,8 +9,8 @@ buildGoModule rec {
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = pname;
-    rev = "0dc831048c5192f8a96c279ab24552b9745e3ebc";
-    sha256 = "sha256-eeLj2txspSdeYXHCuCpZ4TI9hW7qzXc/4mWHRvZRiFQ=";
+    rev = "582aaea7e23466910834a87e46e6207e79f18107";
+    sha256 = "sha256-DOZjM2oDUzYIOZxF4nSYKUJvRfXiuTh5TAB759x2M4M=";
   };
 
   vendorHash = "sha256-CRs3p+gq92ll1vVfOVpznzmgqlEGbuPq091ZMXteLuQ=";
