@@ -1,10 +1,10 @@
 name: "Build and populate cache"
 on:
   pull_request:
-  push:
-    branches:
-      - main
-      - master
+  # push:
+  #   branches:
+  #     - main
+  #     - master
   # schedule:
   #   - cron: "16 4 * * *"
   workflow_dispatch:
