@@ -52,4 +52,7 @@
   tinycast = pkgs.callPackage ./pkgs/tinycast { };
   arc = pkgs.callPackage ./pkgs/arc { };
   kicad = pkgs.callPackage ./pkgs/kicad { };
+  calibre = pkgs.callPackage ./pkgs/calibre { };
+  telegram = pkgs.callPackage ./pkgs/telegram { };
+  wechat = pkgs.callPackage ./pkgs/wechat { };
 }
