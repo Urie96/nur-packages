@@ -7,6 +7,7 @@
 
   skills = import ./pkgs/skills { inherit pkgs; };
   piExtensions = import ./pkgs/piExtensions { inherit pkgs; };
+  casks = import ./pkgs/casks { inherit pkgs; };
   hassComponents = pkgs.callPackage ./pkgs/hassComponents { };
 
   ncmdump = pkgs.callPackage ./pkgs/ncmdump { };
@@ -48,4 +49,6 @@
 
   # binary
   kitty = pkgs.callPackage ./pkgs/kitty { };
+  raycast = pkgs.callPackage ./pkgs/raycast { };
+  kicad = pkgs.callPackage ./pkgs/kicad { };
 }
