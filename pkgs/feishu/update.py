@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Update lark from the Lark Suite download API.
+"""Update feishu from the Feishu (China) download API.
 
-    https://www.larksuite.com/api/downloads
+    https://www.feishu.cn/api/downloads
 
 返回的 JSON 里 `versions.MacOS_m1.download_link` 是 arm64 的 dmg 地址（Homebrew 的
 cask livecheck 用的也是这个接口）：
 
-    https://<host>/obj/lark-version-sg/<hash>/Lark-darwin_arm64-<ver>-signed.dmg
+    https://<host>/obj/ee-appcenter/<hash>/Feishu-darwin_arm64-<ver>-signed.dmg
 
 版本号和那段内容 hash 都得有才能拼出地址，所以 version 用 `<ver>-<hash>`，
 default.nix 里再拆开；host 由 default.nix 写死。拿到 version 后交给 nix-update
@@ -22,9 +22,9 @@ import sys
 import urllib.request
 from pathlib import Path
 
-API_URL = "https://www.larksuite.com/api/downloads"
+API_URL = "https://www.feishu.cn/api/downloads"
 LINK_RE = re.compile(
-    r"/lark-version-sg/(?P<hash>[0-9a-fA-F]+)/Lark-darwin_arm64-(?P<version>\d+(?:\.\d+)+)-signed\.dmg$"
+    r"/ee-appcenter/(?P<hash>[0-9a-fA-F]+)/Feishu-darwin_arm64-(?P<version>\d+(?:\.\d+)+)-signed\.dmg$"
 )
 
 
@@ -50,7 +50,7 @@ def main() -> None:
     print(f"Latest version: {version}")
 
     result = subprocess.run(
-        ["nix-update", "--flake", "lark", "--version", version],
+        ["nix-update", "--flake", "feishu", "--version", version],
         cwd=flake_root,
         capture_output=True,
         text=True,

@@ -56,7 +56,7 @@
   telegram = pkgs.callPackage ./pkgs/telegram { };
   wechat = pkgs.callPackage ./pkgs/wechat { };
   bambu-studio = pkgs.callPackage ./pkgs/bambu-studio { };
-  lark = pkgs.callPackage ./pkgs/lark { };
+  feishu = pkgs.callPackage ./pkgs/feishu { };
   balenaetcher = pkgs.callPackage ./pkgs/balenaetcher { };
   neteasemusic = pkgs.callPackage ./pkgs/neteasemusic { };
 }
