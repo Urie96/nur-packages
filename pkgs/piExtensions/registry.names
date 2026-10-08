@@ -14,4 +14,3 @@
 # list, run `node pkgs/piExtensions/generate.mjs --all` (see --help).
 
 pi-web-access
-pi-mcp-adapter
