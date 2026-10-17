@@ -13,11 +13,16 @@ Usage:
 import argparse
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
+
+# Label added to the PRs opened by `--pr`; it must exist on the forge.
+PR_LABEL = "auto-merge"
 
 
 @dataclass
@@ -70,12 +75,18 @@ def git_get_changes(flake_root: Path) -> str:
 
 
 def get_current_version(pkg: Package) -> str | None:
-    """Get current version from srcs.json if it exists."""
+    """Get the version a package currently declares.
+
+    `srcs.json` for update.py-based packages, otherwise the literal
+    `version = "...";` in `default.nix` (packages that `inherit (srcs) version`
+    are covered by the first branch). Used for commit messages and PR titles.
+    """
     srcs_file = pkg.path / "srcs.json"
     if srcs_file.exists():
         try:
             data: dict[str, str] = json.loads(srcs_file.read_text())
-            return data.get("version")
+            if data.get("version"):
+                return data["version"]
         except json.JSONDecodeError:
             pass
     return None
@@ -143,29 +154,121 @@ def current_system() -> str:
     return _cached_system
 
 
-def package_available(pkg_name: str, flake_root: Path) -> bool:
-    """Check if a package is available for the current system."""
-    system = current_system()
+# flake root -> {system: attribute names exposed under `packages.<system>`}
+_system_maps: dict[str, dict[str, set[str]]] = {}
+
+
+def flake_systems(flake_root: Path) -> list[str]:
+    """List the systems the flake declares (attr names of `legacyPackages`)."""
     result = run_cmd(
-        ["nix", "eval", f".#packages.{system}.{pkg_name}.name", "--raw"],
+        ["nix", "eval", "--json", ".#legacyPackages", "--apply", "builtins.attrNames"],
         cwd=flake_root,
         check=False,
     )
-    return result.returncode == 0
+    if result.returncode != 0:
+        print(f"Warning: could not read flake systems: {result.stderr.strip()}")
+        return [current_system()]
+    try:
+        return list(json.loads(result.stdout))
+    except json.JSONDecodeError:
+        return [current_system()]
 
 
-def run_nix_update(pkg: Package, flake_root: Path, dry_run: bool = False) -> bool:
+def available_by_system(flake_root: Path) -> dict[str, set[str]]:
+    """Map system -> names exposed by `packages.<system>`.
+
+    `flake.nix` filters `packages` with `meta.availableOn`, so membership in a
+    set is exactly "buildable on that system". Attribute names are enough, so
+    this stays lazy (no derivations get forced).
+    """
+    key = str(flake_root)
+    if key in _system_maps:
+        return _system_maps[key]
+
+    mapping: dict[str, set[str]] = {}
+    for system in flake_systems(flake_root):
+        result = run_cmd(
+            [
+                "nix",
+                "eval",
+                "--json",
+                f".#packages.{system}",
+                "--apply",
+                "builtins.attrNames",
+            ],
+            cwd=flake_root,
+            check=False,
+        )
+        names: set[str] = set()
+        if result.returncode == 0:
+            try:
+                names = set(json.loads(result.stdout))
+            except json.JSONDecodeError:
+                pass
+        mapping[system] = names
+
+    _system_maps[key] = mapping
+    return mapping
+
+
+def publish_system(pkg_name: str, flake_root: Path) -> str | None:
+    """System whose `packages.<system>` exposes pkg_name (current system first).
+
+    Returns None when the name is not a plain derivation anywhere in the flake
+    (e.g. `piExtensions` is an attribute set).
+    """
+    mapping = available_by_system(flake_root)
+    current = current_system()
+    if pkg_name in mapping.get(current, ()):
+        return current
+    for system, names in mapping.items():
+        if pkg_name in names:
+            return system
+    return None
+
+
+def check_available(pkg: Package, flake_root: Path) -> bool:
+    """Return False (and explain why) if pkg cannot be built on this system."""
+    target = publish_system(pkg.name, flake_root)
+    current = current_system()
+    if target is None or target == current:
+        return True
+    print(f"  Skipping: only available for {target}, not {current}")
+    return False
+
+
+def run_nix_update(
+    pkg: Package,
+    flake_root: Path,
+    dry_run: bool = False,
+    check_system: bool = True,
+) -> bool:
     """Run nix-update for a package."""
-    system = current_system()
+    current = current_system()
 
-    if not package_available(pkg.name, flake_root):
-        print(f"  Skipping: not available for {system}")
+    if check_system and not check_available(pkg, flake_root):
         return True  # Not a failure, just not applicable
+
+    # Update through the attribute that actually exists: darwin-only packages
+    # are not in `packages.x86_64-linux`, so use `packages.aarch64-darwin`.
+    target = publish_system(pkg.name, flake_root) or current
+
+    if target != current:
+        # nix-update derives the new hash by building the (fixed-output) src
+        # derivation, and a fetchurl for another platform cannot be built here:
+        #   error: Cannot build ...dmg.drv: platform mismatch
+        # Packages with a custom update.py have no such problem because they
+        # call nix-prefetch-url directly, so they *can* cross-update.
+        print(
+            f"  Skipping: nix-update needs a native {target} host "
+            "(give this package an update.py to update it from here)"
+        )
+        return True
 
     cmd = [
         "nix-update",
         "--flake",
-        f"packages.{system}.{pkg.name}",
+        f"packages.{target}.{pkg.name}",
     ]
 
     if pkg.extra_args:
@@ -191,8 +294,16 @@ def run_nix_update(pkg: Package, flake_root: Path, dry_run: bool = False) -> boo
     return True
 
 
-def run_custom_update(pkg: Package, dry_run: bool = False) -> bool:
+def run_custom_update(
+    pkg: Package,
+    flake_root: Path,
+    dry_run: bool = False,
+    check_system: bool = True,
+) -> bool:
     """Import and run main() from update.py."""
+    if check_system and not check_available(pkg, flake_root):
+        return True  # Not a failure, just not applicable
+
     update_script = pkg.path / "update.py"
 
     print(f"  Running: {update_script}")
@@ -219,7 +330,10 @@ def run_custom_update(pkg: Package, dry_run: bool = False) -> bool:
 
 
 def update_package(
-    pkg: Package, flake_root: Path, dry_run: bool = False
+    pkg: Package,
+    flake_root: Path,
+    dry_run: bool = False,
+    check_system: bool = True,
 ) -> UpdateResult:
     """Update a single package and return the result."""
     print(f"\nUpdating {pkg.name} (method: {pkg.method})...")
@@ -230,9 +344,9 @@ def update_package(
     had_changes_before = git_has_changes(flake_root)
 
     if pkg.method == "nix-update":
-        success = run_nix_update(pkg, flake_root, dry_run)
+        success = run_nix_update(pkg, flake_root, dry_run, check_system)
     elif pkg.method == "custom":
-        success = run_custom_update(pkg, dry_run)
+        success = run_custom_update(pkg, flake_root, dry_run, check_system)
     else:
         print(f"  Error: Unknown method: {pkg.method}")
         success = False
@@ -249,32 +363,170 @@ def update_package(
     )
 
 
+def get_remote_url(remote: str, flake_root: Path) -> str | None:
+    """Return the URL of a git remote, or None if it does not exist."""
+    result = run_cmd(
+        ["git", "remote", "get-url", remote], cwd=flake_root, check=False
+    )
+    url = result.stdout.strip()
+    return url or None
+
+
+def remote_host(url: str) -> str | None:
+    """Extract the host from an https://, ssh://, git@host:path or file:// URL."""
+    if "://" in url:
+        return urllib.parse.urlparse(url).hostname
+    if "@" in url:  # scp-like: git@github.com:owner/repo.git
+        return url.split("@", 1)[1].split(":", 1)[0]
+    if ":" in url:
+        return url.split(":", 1)[0]
+    return None
+
+
+def remote_slug(url: str) -> str | None:
+    """Extract `owner/repo` from a remote URL."""
+    if "://" in url:
+        path = urllib.parse.urlparse(url).path
+    elif ":" in url:  # scp-like
+        path = url.split(":", 1)[1]
+    else:
+        path = url
+    slug = path.strip("/").removesuffix(".git")
+    parts = slug.split("/")
+    if len(parts) < 2:
+        return None
+    return "/".join(parts[-2:])
+
+
+def resolve_forge(flake_root: Path, remote: str) -> str:
+    """Decide whether to open the PR with `gh` (GitHub) or `tea` (Gitea)."""
+    url = get_remote_url(remote, flake_root)
+    host = remote_host(url) if url else None
+    if host and "github" in host.lower():
+        return "gh"
+    if host:
+        return "tea"
+    print(f"  Warning: unknown remote '{remote}', falling back to gh")
+    return "gh"
+
+
+def create_pr_command(
+    forge: str,
+    remote: str,
+    slug: str | None,
+    title: str,
+    body: str,
+) -> list[str]:
+    """Build the CLI invocation that opens the pull request."""
+    if forge == "gh":
+        cmd = ["gh", "pr", "create", "--title", title, "--body", body]
+        if slug:
+            cmd.extend(["--repo", slug])
+        cmd.extend(["--label", PR_LABEL])
+        return cmd
+
+    # tea (Gitea/Forgejo). `--remote` lets it pick the matching login.
+    cmd = [
+        "tea",
+        "pulls",
+        "create",
+        "--remote",
+        remote,
+        "--title",
+        title,
+        "--description",
+        body,
+    ]
+    if slug:
+        cmd.extend(["--repo", slug])
+    cmd.extend(["--labels", PR_LABEL])
+    return cmd
+
+
+def open_pull_request(
+    worktree_path: Path,
+    commit_msg: str,
+    pr_body: str,
+    remote: str,
+) -> bool:
+    """Run gh/tea to open the PR."""
+    url = get_remote_url(remote, worktree_path)
+    slug = remote_slug(url) if url else None
+    forge = resolve_forge(worktree_path, remote)
+
+    if forge == "tea" and not os.environ.get("GITEA_TOKEN"):
+        print(
+            "  Hint: tea has no credentials — export GITEA_TOKEN together with "
+            "GITEA_INSTANCE_URL/TEA_HOST, or run `tea login add` (tea < 1.0)"
+        )
+
+    cmd = create_pr_command(forge, remote, slug, commit_msg, pr_body)
+    print(f"  Running: {' '.join(cmd)}")
+    result = run_cmd(cmd, cwd=worktree_path, check=False)
+    if result.returncode != 0:
+        print(f"  Error creating PR with {forge}: {result.stderr.strip()}")
+        return False
+
+    print(f"  Created PR: {result.stdout.strip()}")
+    return True
+
+
+def delete_remote_branch(remote: str, branch: str, cwd: Path) -> None:
+    """Remove a pushed branch so a retry is not blocked by a stale ref."""
+    result = run_cmd(
+        ["git", "push", remote, "--delete", branch], cwd=cwd, check=False
+    )
+    if result.returncode == 0:
+        print(f"  Deleted remote branch {branch}")
+    else:
+        print(
+            f"  Warning: could not delete remote branch {branch}: "
+            f"{result.stderr.strip()}"
+        )
+
+
 def create_pr_for_package(
-    pkg: Package, flake_root: Path, dry_run: bool = False
+    pkg: Package,
+    flake_root: Path,
+    dry_run: bool = False,
+    check_system: bool = True,
+    remote: str = "origin",
 ) -> bool:
     """Create a PR for a package update using a git worktree."""
     branch_name = f"update/{pkg.name}"
 
     print(f"\nCreating PR for {pkg.name}...")
 
-    # Check if branch already exists on remote
+    # Bail out before creating a worktree for packages we cannot build here.
+    if check_system and not check_available(pkg, flake_root):
+        return True  # Not a failure, just not applicable
+
+    if dry_run:
+        # Preview exactly what the real run would do, without touching git.
+        update_package(pkg, flake_root, dry_run=True, check_system=check_system)
+        return True
+
+    # An existing branch means an earlier run already opened a PR for it;
+    # treat that as "nothing to do", otherwise a 5-hourly job goes red forever.
     check_branch = run_cmd(
-        ["git", "ls-remote", "--heads", "origin", branch_name],
+        ["git", "ls-remote", "--heads", remote, branch_name],
         cwd=flake_root,
         check=False,
     )
     if check_branch.stdout.strip():
-        print(f"  Branch {branch_name} already exists on remote, skipping")
-        return False
-
-    if dry_run:
-        print("  (dry-run, skipping)")
+        print(f"  Branch {branch_name} already exists on {remote}, skipping")
         return True
 
-    return _create_pr_in_worktree(pkg, flake_root, branch_name)
+    return _create_pr_in_worktree(pkg, flake_root, branch_name, check_system, remote)
 
 
-def _create_pr_in_worktree(pkg: Package, flake_root: Path, branch_name: str) -> bool:
+def _create_pr_in_worktree(
+    pkg: Package,
+    flake_root: Path,
+    branch_name: str,
+    check_system: bool = True,
+    remote: str = "origin",
+) -> bool:
     """Create PR using a temporary worktree."""
     with tempfile.TemporaryDirectory() as tmpdir:
         worktree_path = Path(tmpdir) / "worktree"
@@ -291,7 +543,7 @@ def _create_pr_in_worktree(pkg: Package, flake_root: Path, branch_name: str) -> 
 
         try:
             return _run_update_and_create_pr(
-                pkg, flake_root, worktree_path, branch_name
+                pkg, flake_root, worktree_path, branch_name, check_system, remote
             )
         finally:
             # Clean up worktree and branch
@@ -304,7 +556,12 @@ def _create_pr_in_worktree(pkg: Package, flake_root: Path, branch_name: str) -> 
 
 
 def _run_update_and_create_pr(
-    pkg: Package, flake_root: Path, worktree_path: Path, branch_name: str
+    pkg: Package,
+    flake_root: Path,
+    worktree_path: Path,
+    branch_name: str,
+    check_system: bool = True,
+    remote: str = "origin",
 ) -> bool:
     """Run update in worktree and create PR."""
     old_version = get_current_version(pkg)
@@ -318,9 +575,13 @@ def _run_update_and_create_pr(
     )
 
     if pkg.method == "nix-update":
-        success = run_nix_update(worktree_pkg, worktree_path, dry_run=False)
+        success = run_nix_update(
+            worktree_pkg, worktree_path, dry_run=False, check_system=check_system
+        )
     elif pkg.method == "custom":
-        success = run_custom_update(worktree_pkg, dry_run=False)
+        success = run_custom_update(
+            worktree_pkg, worktree_path, dry_run=False, check_system=check_system
+        )
     else:
         success = False
 
@@ -340,53 +601,28 @@ def _run_update_and_create_pr(
     run_cmd(["git", "add", "-A"], cwd=worktree_path)
     commit_msg = f"{pkg.name}: {old_ver} -> {new_ver}"
     commit_result = run_cmd(
-        [
-            "git",
-            "-c",
-            "user.name=github-actions[bot]",
-            "-c",
-            "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-            "commit",
-            "-m",
-            commit_msg,
-        ],
-        cwd=worktree_path,
-        check=False,
+        ["git", "commit", "-m", commit_msg], cwd=worktree_path, check=False
     )
     if commit_result.returncode != 0:
         print(f"  Error committing: {commit_result.stderr}")
         return False
 
     push_result = run_cmd(
-        ["git", "push", "-u", "origin", branch_name], cwd=worktree_path, check=False
+        ["git", "push", "-u", remote, branch_name],
+        cwd=worktree_path,
+        check=False,
     )
     if push_result.returncode != 0:
-        print(f"  Error pushing: {push_result.stderr}")
+        print(f"  Error pushing to {remote}: {push_result.stderr}")
         return False
 
     # Create PR
     pr_body = f"Automated update of {pkg.name} from {old_ver} to {new_ver}."
-    pr_result = run_cmd(
-        [
-            "gh",
-            "pr",
-            "create",
-            "--title",
-            commit_msg,
-            "--body",
-            pr_body,
-            "--label",
-            "auto-merge",
-        ],
-        cwd=worktree_path,
-        check=False,
-    )
-
-    if pr_result.returncode != 0:
-        print(f"  Error creating PR: {pr_result.stderr}")
+    if not open_pull_request(worktree_path, commit_msg, pr_body, remote):
+        # Leaving the branch behind would make every later run skip this package.
+        delete_remote_branch(remote, branch_name, worktree_path)
         return False
 
-    print(f"  Created PR: {pr_result.stdout.strip()}")
     return True
 
 
@@ -416,7 +652,13 @@ def main() -> int:
     parser.add_argument(
         "--package",
         "-p",
-        help="Update only the specified package",
+        help="Update only the specified package (ignores the system check)",
+    )
+    parser.add_argument(
+        "--all-systems",
+        action="store_true",
+        help="Do not skip packages that are not available on the current system "
+        "(e.g. update darwin-only packages from Linux)",
     )
     parser.add_argument(
         "--list",
@@ -428,6 +670,11 @@ def main() -> int:
         "--pr",
         action="store_true",
         help="Create a PR for each updated package (uses git worktrees)",
+    )
+    parser.add_argument(
+        "--remote",
+        default="origin",
+        help="Remote to push update branches to (default: origin)",
     )
 
     args = parser.parse_args()
@@ -450,16 +697,23 @@ def main() -> int:
     success_count = 0
     failure_count = 0
 
+    # Naming a package explicitly means "do it, I know what I'm doing"; otherwise
+    # skip packages whose meta.platforms does not cover this system.
+    check_system = not args.all_systems and not args.package
+
     for pkg in packages:
         if args.pr:
             # PR mode: use worktree to create PR without touching current checkout
-            if create_pr_for_package(pkg, flake_root, args.dry_run):
+            ok = create_pr_for_package(
+                pkg, flake_root, args.dry_run, check_system, args.remote
+            )
+            if ok:
                 success_count += 1
             else:
                 failure_count += 1
         else:
             # Normal mode: update in place
-            result = update_package(pkg, flake_root, args.dry_run)
+            result = update_package(pkg, flake_root, args.dry_run, check_system)
             if result.success:
                 success_count += 1
             else:

@@ -1,0 +1,51 @@
+name: "Update packages and open PRs"
+
+on:
+  schedule:
+    # every 5 hours, offset from the top of the hour (UTC)
+    - cron: "17 */5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: update-packages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: x86_64-linux
+    # First runs download every upstream artifact to compute hashes; the nix
+    # store caches them, so later runs are much faster.
+    timeout-minutes: 180
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      # tea reads credentials from the environment, so no `tea login` needed
+      # (works on both tea 0.15 and tea 1.x; nothing is persisted).
+      # GITEA_INSTANCE_URL is understood by 0.15+, TEA_HOST by 1.x.
+      GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+      GITEA_INSTANCE_URL: ${{ github.server_url }}
+      TEA_HOST: ${{ github.server_url }}
+      # author identity for the update commits
+      UPDATER_GIT_NAME: "gitea-actions[bot]"
+      UPDATER_GIT_EMAIL: "gitea-actions[bot]@noreply.local"
+    steps:
+      - name: Checkout repository
+        # Keeps `persist-credentials` at its default (true): checkout stores the
+        # job token in a git config file included for this repo *and* its
+        # worktrees, so the plain `git push` done by the updater authenticates
+        # on its own. The job token is the credential, granted by `permissions`.
+        uses: actions/checkout@v4
+
+      - name: Set commit identity
+        run: |
+          set -eu
+          git config user.name "$UPDATER_GIT_NAME"
+          git config user.email "$UPDATER_GIT_EMAIL"
+
+      - name: Update packages and open PRs
+        # --all-systems so darwin-only packages get bumped from this Linux
+        # runner too (custom update.py packages can cross-update; nix-update
+        # ones are skipped because their src hash has to be built natively).
+        run: nix run .#updater -- --pr
