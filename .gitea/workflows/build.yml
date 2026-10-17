@@ -29,6 +29,7 @@ jobs:
         system:
           - x86_64-linux
           - aarch64-linux
+          - aarch64-darwin
     # Label of the runner, i.e. `x86_64-linux` and `aarch64-linux` must exist as
     # runner labels in Gitea.
     runs-on: ${{ matrix.system }}
