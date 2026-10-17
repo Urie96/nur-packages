@@ -11,8 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check evaluation
-        run: nix flake check --no-build --keep-going --all-systems
-
+      # The evaluation check now runs on pull requests (pr.yml), so a merge
+      # only lands here after it has passed. This job only populates the cache.
       - name: Build
         run: nix build --no-link --keep-going .#ci.x86_64-linux.all
