@@ -33,8 +33,7 @@ rustPlatform.buildRustPackage rec {
 
   postInstall =
     let
-      libLibraryPathKey = if stdenv.isDarwin then "DYLD_LIBRARY_PATH" else "LD_LIBRARY_PATH";
-
+      libLibraryPathKey = if stdenv.hostPlatform.isDarwin then "DYLD_LIBRARY_PATH" else "LD_LIBRARY_PATH";
     in
     ''
       wrapProgram $out/bin/xiaozhi-server-rs \

@@ -1,0 +1,18 @@
+name: "Build and populate cache"
+on:
+  push:
+    branches:
+      - main
+      - master
+jobs:
+  build:
+    runs-on: x86_64-linux
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check evaluation
+        run: nix flake check --no-build --keep-going --all-systems
+
+      - name: Build
+        run: nix build --keep-going .#ci.x86_64-linux.all
