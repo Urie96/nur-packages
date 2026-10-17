@@ -15,4 +15,4 @@ jobs:
         run: nix flake check --no-build --keep-going --all-systems
 
       - name: Build
-        run: nix build --keep-going .#ci.x86_64-linux.all
+        run: nix build --no-link --keep-going .#ci.x86_64-linux.all
