@@ -14,6 +14,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -90,6 +91,16 @@ def get_current_version(pkg: Package) -> str | None:
                 return data["version"]
         except json.JSONDecodeError:
             pass
+
+    # nix-update packages keep the version in default.nix itself.
+    nix_file = pkg.path / "default.nix"
+    if nix_file.exists():
+        match = re.search(
+            r'^\s*version\s*=\s*"([^"]+)"\s*;', nix_file.read_text(), re.MULTILINE
+        )
+        if match:
+            return match.group(1)
+
     return None
 
 
