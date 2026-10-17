@@ -4,14 +4,37 @@ on:
     branches:
       - main
       - master
+
+# One run per push, but never cancel a running one: these jobs exist to warm the
+# runners' stores, and a cancelled build leaves the store only partly populated.
+# (Runs are queued, jobs inside a run still run in parallel.)
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
-    runs-on: x86_64-linux
+    # The evaluation check runs on pull requests (pr.yml), so a merge only lands
+    # here after it has passed. This job only populates the cache.
+    #
+    # One leg per runner architecture. Each leg builds natively on its own
+    # machine; ci.nix filters the package set by meta.platforms (and
+    # meta.broken/license), so every leg builds the subset that is available on
+    # its platform and `ci.$system.all` never asks for a foreign-arch build.
+    strategy:
+      # A failing package on arm must not cancel the x86 leg (and vice versa):
+      # warming either store is still useful.
+      fail-fast: false
+      matrix:
+        system:
+          - x86_64-linux
+          - aarch64-linux
+    # Label of the runner, i.e. `x86_64-linux` and `aarch64-linux` must exist as
+    # runner labels in Gitea.
+    runs-on: ${{ matrix.system }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # The evaluation check now runs on pull requests (pr.yml), so a merge
-      # only lands here after it has passed. This job only populates the cache.
-      - name: Build
-        run: nix build --no-link --keep-going .#ci.x86_64-linux.all
+      - name: Build (${{ matrix.system }})
+        run: nix build --no-link --keep-going .#ci.${{ matrix.system }}.all
