@@ -2,9 +2,9 @@
   "packages": {
     "pi-web-access": {
       "name": "pi-web-access",
-      "version": "0.37.0",
-      "tarball": "https://registry.npmjs.org/pi-web-access/-/pi-web-access-0.37.0.tgz",
-      "hash": "sha512-Je7D5ghQi9dpN0KhpFMuHYwKy0oBvpNrNR7zuTzSyCRsIJDC5in8yGz/3yItxvWYHF1W+q2Sq190nyaLkoWhgg==",
+      "version": "0.42.0",
+      "tarball": "https://registry.npmjs.org/pi-web-access/-/pi-web-access-0.42.0.tgz",
+      "hash": "sha512-AUtkNFw1wltHSzxEQGF9yjUjijQE75opicgXrOLCX7iRWWXaKoj0fOlPAWUHVMqRRHeUwN6S/sYFrm3+2QOtMQ==",
       "tier": "B",
       "piManifest": {
         "video": "https://github.com/nicobailon/pi-web-access/raw/refs/heads/main/pi-web-fetch-demo.mp4",
@@ -21,7 +21,7 @@
         "turndown": "^7.2.0",
         "promise.try": "^2.0.1",
         "@mozilla/readability": "^0.6.0",
-        "@modelcontextprotocol/sdk": "1.27.1"
+        "@modelcontextprotocol/sdk": "1.32.1"
       },
       "peerDependencies": {
         "typebox": "*",
