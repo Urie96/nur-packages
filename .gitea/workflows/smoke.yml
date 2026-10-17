@@ -91,24 +91,33 @@ jobs:
             commit -m "ci: smoke test commit"
           git push -u origin "$branch"
 
-      - name: Create a throwaway PR (same command shape as the updater)
+      - name: "Create a throwaway PR (run with test_pr=true)"
         if: inputs.test_pr == 'true'
         id: pr
         run: |
-          set -eu
+          set -u
           cd /tmp/smoke-wt
-          out="$("$TEA" pulls create \
-            --remote origin \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "ci: smoke test ${{ steps.push.outputs.branch }}" \
-            --description "Throwaway PR from the smoke workflow. Safe to close.")"
+          title="ci: smoke test ${{ steps.push.outputs.branch }}"
+          body="Throwaway PR from the smoke workflow. Safe to close."
+          create() {
+            "$TEA" pulls create --remote origin --repo "$GITHUB_REPOSITORY" \
+              --title "$title" --description "$body" "$@" 2>&1
+          }
+          # First exactly what the updater does, label included...
+          if out="$(create --labels auto-merge)"; then
+            echo "create with --labels auto-merge: ok (label exists)"
+          else
+            printf '%s\n' "$out"
+            echo "::warning:: --labels auto-merge rejected; the updater retries without labels, doing the same"
+            out="$(create)" || { printf '%s\n' "$out"; echo "create without labels failed too"; exit 1; }
+          fi
           printf '%s\n' "$out"
           # tea prints either the PR URL or "Created pull request #N"
           idx="$(printf '%s\n' "$out" | grep -oE '(/pulls/|#)[0-9]+' | tail -1 | tr -dc '0-9')"
           if [ -n "$idx" ]; then
             echo "index=$idx" >> "$GITHUB_OUTPUT"
           else
-            echo "warning: could not parse the PR index; close it by hand"
+            echo "::warning:: could not parse the PR index; close it by hand"
           fi
 
       - name: Cleanup (close test PR, delete branch and worktree)
