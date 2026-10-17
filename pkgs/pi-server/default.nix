@@ -37,7 +37,6 @@ stdenv.mkDerivation (finalAttrs: {
     runHook preBuild
 
     pnpm run build
-    pnpm prune --prod
 
     runHook postBuild
   '';
