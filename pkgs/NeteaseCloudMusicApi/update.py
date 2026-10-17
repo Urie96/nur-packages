@@ -44,8 +44,10 @@ def main() -> None:
         cwd=flake_root,
         capture_output=True,
         text=True,
-        check=True,
     )
+    if result.returncode != 0:
+        print(f"Error: {result.stderr.strip()}")
+        sys.exit(1)
     src_path = Path(result.stdout.strip())
 
     # Copy and clean package.json (remove scripts to skip postinstall)

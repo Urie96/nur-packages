@@ -37,6 +37,12 @@ jobs:
         # worktrees, so the plain `git push` done by the updater authenticates
         # on its own. The job token is the credential, granted by `permissions`.
         uses: actions/checkout@v4
+        with:
+          # nix resolves the flake through git; with a shallow clone (checkout's
+          # default) evaluating the *worktree* the updater creates fails with
+          # "getting Git object '<parent>': object not found", because libgit2
+          # cannot see the shallow boundary from inside a worktree.
+          fetch-depth: 0
 
       - name: Set commit identity
         run: |
@@ -48,4 +54,4 @@ jobs:
         # --all-systems so darwin-only packages get bumped from this Linux
         # runner too (custom update.py packages can cross-update; nix-update
         # ones are skipped because their src hash has to be built natively).
-        run: nix run .#updater -- --pr
+        run: nix run .#updater -- --pr --all-systems

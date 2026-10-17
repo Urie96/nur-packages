@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import traceback
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
@@ -157,6 +158,9 @@ def current_system() -> str:
 # flake root -> {system: attribute names exposed under `packages.<system>`}
 _system_maps: dict[str, dict[str, set[str]]] = {}
 
+# Packages skipped because they do not build on this system.
+_skipped: set[str] = set()
+
 
 def flake_systems(flake_root: Path) -> list[str]:
     """List the systems the flake declares (attr names of `legacyPackages`)."""
@@ -234,6 +238,7 @@ def check_available(pkg: Package, flake_root: Path) -> bool:
     if target is None or target == current:
         return True
     print(f"  Skipping: only available for {target}, not {current}")
+    _skipped.add(pkg.name)
     return False
 
 
@@ -263,6 +268,7 @@ def run_nix_update(
             f"  Skipping: nix-update needs a native {target} host "
             "(give this package an update.py to update it from here)"
         )
+        _skipped.add(pkg.name)
         return True
 
     cmd = [
@@ -325,7 +331,23 @@ def run_custom_update(
         print(f"  Error: {update_script} has no main() function")
         return False
 
-    module.main()
+    # A single broken update.py must not abort the whole run (the other
+    # packages still deserve their PR). `sys.exit()` raises SystemExit, which is
+    # a BaseException, so it needs its own handler — every update.py in this repo
+    # ends with sys.exit(1) on failure.
+    try:
+        module.main()
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code == 0:
+            return True
+        print(f"  Error: {pkg.name}/update.py exited with {code}")
+        return False
+    except Exception:  # noqa: BLE001 - third-party script boundary
+        traceback.print_exc()
+        print(f"  Error: {pkg.name}/update.py raised")
+        return False
+
     return True
 
 
@@ -517,14 +539,13 @@ def create_pr_for_package(
         print(f"  Branch {branch_name} already exists on {remote}, skipping")
         return True
 
-    return _create_pr_in_worktree(pkg, flake_root, branch_name, check_system, remote)
+    return _create_pr_in_worktree(pkg, flake_root, branch_name, remote)
 
 
 def _create_pr_in_worktree(
     pkg: Package,
     flake_root: Path,
     branch_name: str,
-    check_system: bool = True,
     remote: str = "origin",
 ) -> bool:
     """Create PR using a temporary worktree."""
@@ -543,7 +564,7 @@ def _create_pr_in_worktree(
 
         try:
             return _run_update_and_create_pr(
-                pkg, flake_root, worktree_path, branch_name, check_system, remote
+                pkg, flake_root, worktree_path, branch_name, remote
             )
         finally:
             # Clean up worktree and branch
@@ -560,7 +581,6 @@ def _run_update_and_create_pr(
     flake_root: Path,
     worktree_path: Path,
     branch_name: str,
-    check_system: bool = True,
     remote: str = "origin",
 ) -> bool:
     """Run update in worktree and create PR."""
@@ -576,11 +596,14 @@ def _run_update_and_create_pr(
 
     if pkg.method == "nix-update":
         success = run_nix_update(
-            worktree_pkg, worktree_path, dry_run=False, check_system=check_system
+            worktree_pkg, worktree_path, dry_run=False, check_system=False
         )
     elif pkg.method == "custom":
+        # Availability was already checked against the main checkout in
+        # create_pr_for_package; re-checking here would evaluate the flake from
+        # inside the worktree, which is both slow and fragile.
         success = run_custom_update(
-            worktree_pkg, worktree_path, dry_run=False, check_system=check_system
+            worktree_pkg, worktree_path, dry_run=False, check_system=False
         )
     else:
         success = False
@@ -696,6 +719,7 @@ def main() -> int:
 
     success_count = 0
     failure_count = 0
+    failed: list[str] = []
 
     # Naming a package explicitly means "do it, I know what I'm doing"; otherwise
     # skip packages whose meta.platforms does not cover this system.
@@ -707,20 +731,27 @@ def main() -> int:
             ok = create_pr_for_package(
                 pkg, flake_root, args.dry_run, check_system, args.remote
             )
-            if ok:
-                success_count += 1
-            else:
-                failure_count += 1
         else:
             # Normal mode: update in place
-            result = update_package(pkg, flake_root, args.dry_run, check_system)
-            if result.success:
-                success_count += 1
-            else:
-                failure_count += 1
+            ok = update_package(pkg, flake_root, args.dry_run, check_system).success
+
+        if ok:
+            success_count += 1
+        else:
+            failure_count += 1
+            failed.append(pkg.name)
 
     print(f"\n{'=' * 40}")
     print(f"Results: {success_count} succeeded, {failure_count} failed")
+    if _skipped:
+        print(
+            f"Skipped (not available for {current_system()}): "
+            f"{', '.join(sorted(_skipped))}"
+        )
+    if failed:
+        print(f"Failed packages: {', '.join(failed)}")
+        # Gitea/GitHub render this as an annotation at the top of the job.
+        print(f"::error::{len(failed)} package(s) failed: {', '.join(failed)}")
 
     return 0 if failure_count == 0 else 1
 
