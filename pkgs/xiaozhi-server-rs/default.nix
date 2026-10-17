@@ -10,15 +10,15 @@
 }:
 rustPlatform.buildRustPackage rec {
   pname = "xiaozhi-server-rs";
-  version = "0-unstable-2026-07-02";
+  version = "0-unstable-2026-07-11";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = pname;
-    rev = "6624b1260b32f41b97c95e5583d2be6a6c8c7ebe";
-    sha256 = "sha256-pE6xFTCY1VJb/aT96YfNH8Ob5B45oRoFPfyegOko+PQ=";
+    rev = "9d3a60b311bf9f1f979f5e7c3d708a4ec30ca6c1";
+    sha256 = "sha256-lvQxpW7B20lLpvn3AzqKFF39UbaKcM7AmnLhYWs6ELo=";
   };
-  cargoHash = "sha256-FJGiQjSbNvN42+XE4qyIPrlkzOYWz512DFO1sbpN7xc=";
+  cargoHash = "sha256-8XIOv1Q3ZsbvoZjRU4YXlygXppfFIKEkN7DjgecGcDY=";
 
   nativeBuildInputs = [
     pkg-config
