@@ -38,4 +38,30 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build (${{ matrix.system }})
-        run: nix build --no-link --keep-going .#ci.${{ matrix.system }}.all
+        run: |
+          set -euo pipefail
+          nix build --keep-going -o result .#ci.${{ matrix.system }}.all
+          echo "### ${{ matrix.system }} closure size"
+          echo "total: $(nix path-info -Sh ./result | awk '{print $1}')"
+
+      # 私钥来自仓库 secret CACHE_PUSH_SSH_KEY（对应 cache-push@home.lubui.com 的
+      # authorized_keys）。写入临时文件后通过 NIX_SSHOPTS 传给 nix 的 ssh transport。
+      - name: Push closure to cache (${{ matrix.system }})
+        env:
+          CACHE_PUSH_SSH_KEY: ${{ secrets.CACHE_PUSH_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CACHE_PUSH_SSH_KEY:-}" ]; then
+            echo "CACHE_PUSH_SSH_KEY is empty, refusing to continue" >&2
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          key="${RUNNER_TEMP:-/tmp}/cache_push_key"
+          printf '%s\n' "$CACHE_PUSH_SSH_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          unset CACHE_PUSH_SSH_KEY
+          # 首次连接先学习主机公钥；scan 失败再退回 accept-new，避免 keyscan 抖动导致失败
+          ssh-keyscan home.lubui.com > "$HOME/.ssh/known_hosts" 2>/dev/null || true
+          export NIX_SSHOPTS="-i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          nix copy --to ssh-ng://cache-push@home.lubui.com ./result
