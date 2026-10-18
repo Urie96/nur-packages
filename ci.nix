@@ -29,6 +29,11 @@ let
       if platforms == null then true
       else builtins.elem pkgs.stdenv.hostPlatform.system platforms;
   isCacheable = p: !(p.preferLocalBuild or false);
+  # 上游二进制包（dmg / zip / AppImage 之类）：本地「构建」只是下载 + 解包，产出动辄
+  # 上 GB（calibre 1.1G、kicad 4.9G……），而下游完全可以从上游直接拿到同样的东西，
+  # 缓存收益为零，所以默认不进 CI。
+  isUpstreamBinary = p:
+    elem pkgs.lib.sourceTypes.binaryNativeCode (p.meta.sourceProvenance or [ ]);
   shouldRecurseForDerivations = p: isAttrs p && p.recurseForDerivations or false;
 
   nameValuePair = n: v: { name = n; value = v; };
@@ -55,9 +60,13 @@ let
 
 in
 rec {
-  buildPkgs = filter (p: isBuildable p && isPlatformCompatible p) nurPkgs;
+  buildPkgs = filter (p: isBuildable p && isPlatformCompatible p && !isUpstreamBinary p) nurPkgs;
   cachePkgs = filter isCacheable buildPkgs;
+
+  # 被排除的那批单独暴露，需要时仍然可以一把构建（ci.<system>.binary）
+  binaryPkgs = filter (p: isBuildable p && isPlatformCompatible p && isUpstreamBinary p) nurPkgs;
 
   buildOutputs = concatMap outputsOf buildPkgs;
   cacheOutputs = concatMap outputsOf cachePkgs;
+  binaryOutputs = concatMap outputsOf (filter isCacheable binaryPkgs);
 }

@@ -48,6 +48,13 @@
               path = p;
             }) ci.cacheOutputs
           );
+          # 上游二进制包（dmg/zip）：不进 ci.all，但需要时可以单独一把拉下来
+          binary = (pkgsFor system).linkFarm "nur-ci-binaries-${system}" (
+            nixpkgs.lib.imap0 (i: p: {
+              name = "${toString i}-${p.name or "pkg"}";
+              path = p;
+            }) ci.binaryOutputs
+          );
         }
       );
 
