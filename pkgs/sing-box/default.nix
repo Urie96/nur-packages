@@ -4,6 +4,7 @@
   fetchFromGitHub,
   installShellFiles,
   coreutils,
+  stdenv,
 }:
 
 buildGoModule (finalAttrs: {
@@ -38,7 +39,10 @@ buildGoModule (finalAttrs: {
     "cmd/sing-box"
   ];
 
-  env.CGO_ENABLED = 0;
+  # darwin 上 local DNS transport 的 Exchange 实现在 local_darwin_cgo.go 里
+  # （1.14.0-alpha 起从 local_darwin.go 拆出去的），必须开启 cgo 才能编译，
+  # 上游 darwin CI 也是 CGO_ENABLED=1。
+  env.CGO_ENABLED = if stdenv.hostPlatform.isDarwin then 1 else 0;
 
   nativeBuildInputs = [ installShellFiles ];
 
