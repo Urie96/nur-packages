@@ -1,9 +1,12 @@
 name: "Nightly PR from daily branch"
 
 # Opens (at most) one pull request per night from the branch you push your
-# everyday work to. The PR is created with the `auto-merge` label, so pr.yml runs
-# the checks and the build and then schedules Gitea's native auto-merge: the
-# branch lands on main without any manual step.
+# everyday work to, and schedules Gitea's native auto-merge on it: pr.yml runs
+# the checks and the branch lands on main without any manual step.
+#
+# All the "is there anything to do" logic lives in the action: it does nothing
+# when `daily` does not exist, when it is already contained in `main`, or when
+# the pull request is already open (it just re-schedules the merge).
 #
 # This exists because a pull_request only re-runs on `synchronize` while a PR is
 # open: once the previous PR is merged there is no PR left, so further pushes to
@@ -22,88 +25,27 @@ concurrency:
   group: nightly-pr
   cancel-in-progress: false
 
-env:
-  # Long-lived branch you push to.
-  DAILY_BRANCH: daily
-  # Branch that receives the merged commits.
-  TARGET_BRANCH: main
-  # Label pr.yml waits for before scheduling the auto-merge. The nightly PR is
-  # the only PR that is not opened by the updater, so pr.yml needs no knowledge
-  # of `daily` at all.
-  PR_LABEL: auto-merge
-
 jobs:
   open-pr:
     runs-on: x86_64-linux
     timeout-minutes: 10
     permissions:
       contents: read
-    env:
-      # `tea` builds a login from these variables (same as update.yml), so no
-      # `tea login add` is needed.
-      #
-      # Deliberately a real user's PAT, not the job token: events caused by the
-      # job token (gitea-actions) never trigger workflows, so a PR created with
-      # it would get no checks and hence no auto-merge.
-      GITEA_TOKEN: ${{ secrets.BOT_TOKEN }}
-      GITEA_INSTANCE_URL: ${{ github.server_url }}
-      # read by tea 1.x, ignored by 0.15
-      TEA_HOST: ${{ github.server_url }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # Opens the pull request (reusing the open one from an earlier run) and
+      # schedules `merge_when_checks_succeed` on it; Gitea completes the merge
+      # as soon as "PR check / check (pull_request)" is green, so pr.yml needs no
+      # merge job of its own.
+      #
+      # The action needs a real user's PAT, not the job token: events caused by
+      # the `gitea-actions` user never trigger workflows, so a PR opened with the
+      # job token would get no checks to wait for.
+      - name: Open pull request and schedule auto-merge
+        uses: urie96/gitea-pr@v1
         with:
-          # full history: we need the merge base of the two branches
-          fetch-depth: 0
-
-      - name: Open pull request
-        run: |
-          set -eu
-          head="$DAILY_BRANCH"
-          base="$TARGET_BRANCH"
-
-          # Nothing to do while the branch does not exist (e.g. before you have
-          # started pushing to it, or after you renamed it).
-          if ! git ls-remote --exit-code --heads origin "refs/heads/$head" >/dev/null 2>&1; then
-            echo "branch '$head' does not exist on origin; nothing to do"
-            exit 0
-          fi
-
-          git fetch --no-tags origin \
-            "+refs/heads/$base:refs/remotes/origin/$base" \
-            "+refs/heads/$head:refs/remotes/origin/$head"
-
-          commits=$(git rev-list --count "origin/$base..origin/$head")
-          if [ "$commits" -eq 0 ]; then
-            echo "'$head' has no commits on top of '$base'; nothing to do"
-            exit 0
-          fi
-
-          title="Nightly merge $head into $base ($(date -u +%F))"
-          description="Automated nightly pull request: $commits commit(s) from \`$head\` into \`$base\`."
-
-          # tea resolves `--labels` to IDs and sends them with the create call,
-          # so the `opened` event already carries the label.
-          if ! out=$(tea pulls create \
-                --remote origin \
-                --head "$head" \
-                --base "$base" \
-                --title "$title" \
-                --description "$description" \
-                --labels "$PR_LABEL" 2>&1); then
-            case "$out" in
-              # A PR from this branch is already open: an earlier run (or your
-              # own push) already did the work. "no changes" covers a branch
-              # that is already contained in the target.
-              *"already exists"*|*"no changes"*)
-                echo "$out"
-                echo "nothing to do for $head -> $base"
-                exit 0
-                ;;
-              *)
-                echo "$out" >&2
-                exit 1
-                ;;
-            esac
-          fi
-          echo "$out"
+          token: ${{ secrets.BOT_TOKEN }}
+          head: daily
+          base: main
+          title: Nightly merge daily into main
+          merge-method: merge
+          delete-branch: true
