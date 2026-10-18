@@ -42,11 +42,13 @@ jobs:
           set -euo pipefail
           nix build --keep-going -o result .#ci.${{ matrix.system }}.all
           echo "### ${{ matrix.system }} closure size"
-          echo "total: $(nix path-info -Sh ./result | awk '{print $1}')"
+          nix path-info -Sh ./result
 
       # 私钥来自仓库 secret CACHE_PUSH_SSH_KEY（对应 cache-push@home.lubui.com 的
       # authorized_keys）。写入临时文件后通过 NIX_SSHOPTS 传给 nix 的 ssh transport。
+      # x86_64-linux leg 不推：这台机器自己就能原生构建，推过去没收益。
       - name: Push closure to cache (${{ matrix.system }})
+        if: matrix.system != 'x86_64-linux'
         env:
           CACHE_PUSH_SSH_KEY: ${{ secrets.CACHE_PUSH_SSH_KEY }}
         run: |
