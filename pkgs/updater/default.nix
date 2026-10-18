@@ -6,7 +6,6 @@
   nix,
   git,
   gh,
-  tea,
   nodejs,
 }:
 
@@ -33,7 +32,6 @@ python3.pkgs.buildPythonApplication {
           nix
           git
           gh
-          tea
           nodejs
         ]
       } \
