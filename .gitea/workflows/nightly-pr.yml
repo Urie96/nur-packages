@@ -47,5 +47,7 @@ jobs:
           head: daily
           base: main
           title: Nightly merge daily into main
+          # Created by the action if the repository has no such label yet.
+          labels: automated
           merge-method: merge
           delete-branch: true
