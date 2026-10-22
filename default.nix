@@ -48,15 +48,15 @@
 
   # binary
   kitty = pkgs.callPackage ./pkgs/kitty { };
-  raycast = pkgs.callPackage ./pkgs/raycast { };
+  # raycast = pkgs.callPackage ./pkgs/raycast { };
   tinycast = pkgs.callPackage ./pkgs/tinycast { };
-  arc = pkgs.callPackage ./pkgs/arc { };
-  kicad = pkgs.callPackage ./pkgs/kicad { };
-  calibre = pkgs.callPackage ./pkgs/calibre { };
-  telegram = pkgs.callPackage ./pkgs/telegram { };
-  wechat = pkgs.callPackage ./pkgs/wechat { };
-  bambu-studio = pkgs.callPackage ./pkgs/bambu-studio { };
-  feishu = pkgs.callPackage ./pkgs/feishu { };
-  balenaetcher = pkgs.callPackage ./pkgs/balenaetcher { };
-  neteasemusic = pkgs.callPackage ./pkgs/neteasemusic { };
+  # balenaetcher = pkgs.callPackage ./pkgs/balenaetcher { };
+  # arc = pkgs.callPackage ./pkgs/arc { };
+  # kicad = pkgs.callPackage ./pkgs/kicad { };
+  # calibre = pkgs.callPackage ./pkgs/calibre { };
+  # telegram = pkgs.callPackage ./pkgs/telegram { };
+  # wechat = pkgs.callPackage ./pkgs/wechat { };
+  # bambu-studio = pkgs.callPackage ./pkgs/bambu-studio { };
+  # feishu = pkgs.callPackage ./pkgs/feishu { };
+  # neteasemusic = pkgs.callPackage ./pkgs/neteasemusic { };
 }
