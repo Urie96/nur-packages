@@ -20,7 +20,7 @@ jobs:
     # One leg per runner architecture. Each leg builds natively on its own
     # machine; ci.nix filters the package set by meta.platforms (and
     # meta.broken/license), so every leg builds the subset that is available on
-    # its platform and `ci.$system.all` never asks for a foreign-arch build.
+    # its platform and `checks.$system.all` never asks for a foreign-arch build.
     strategy:
       # A failing package on arm must not cancel the x86 leg (and vice versa):
       # warming either store is still useful.
@@ -40,7 +40,7 @@ jobs:
       - name: Build (${{ matrix.system }})
         run: |
           set -euo pipefail
-          nix build --keep-going -o result .#ci.${{ matrix.system }}.all
+          nix build --keep-going -o result .#checks.${{ matrix.system }}.all
           echo "### ${{ matrix.system }} closure size"
           nix path-info -Sh ./result
 

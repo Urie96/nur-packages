@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 
-from .forge import GITEA, open_pull_request, resolve_forge, schedule_auto_merge
+from .forge import has_open_pr, open_pull_request, schedule_auto_merge
 from .gitops import delete_remote_branch, git_has_changes, remote_branch_exists, run_cmd
 from .package import Package, get_current_version
 from .updating import (
@@ -36,11 +36,17 @@ def create_pr_for_package(
         update_package(pkg, flake_root, dry_run=True, check_system=check_system)
         return True
 
-    # An existing branch means an earlier run already opened a PR for it;
-    # treat that as "nothing to do", otherwise a 5-hourly job goes red forever.
+    # An existing branch usually means an earlier run already opened a PR, and
+    # skipping it keeps the 5-hourly job from going red forever. But a branch
+    # can also be left behind by a merged or closed PR (auto-merge + retained
+    # head branches): treating that as "PR still open" would silently stop
+    # updating the package for good. Only skip when a PR is actually open.
     if remote_branch_exists(remote, branch_name, flake_root):
-        print(f"  Branch {branch_name} already exists on {remote}, skipping")
-        return True
+        if has_open_pr(flake_root, remote, branch_name):
+            print(f"  Branch {branch_name} already exists on {remote}, skipping")
+            return True
+        print(f"  Branch {branch_name} has no open PR, deleting the stale branch")
+        delete_remote_branch(remote, branch_name, flake_root)
 
     return _create_pr_in_worktree(pkg, flake_root, branch_name, remote, auto_merge)
 
@@ -151,9 +157,6 @@ def _run_update_and_create_pr(
         return False
 
     if auto_merge:
-        if resolve_forge(worktree_path, remote) == GITEA:
-            schedule_auto_merge(worktree_path, remote, branch_name)
-        else:
-            print("  Note: --auto-merge is only implemented for Gitea; skipping")
+        schedule_auto_merge(worktree_path, remote, branch_name)
 
     return True

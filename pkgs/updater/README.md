@@ -66,16 +66,23 @@ a temporary worktree, commits, pushes and opens a PR:
   Gitea HTTP API (no `tea` binary involved);
 - the PR targets the repository's `default_branch` as reported by the API;
 - `--remote` picks the remote to push to (default `origin`);
-- `--auto-merge` schedules Gitea's native auto-merge on the PR it just opened
-  (`POST /pulls/{n}/merge` with `merge_when_checks_succeed`), so the PR lands
-  by itself once the required status checks are green. No label and no second
+- `--auto-merge` arms the PR's auto-merge right after opening it, so it lands by
+  itself once the required status checks are green. No label and no second
   workflow is involved; the merge style is always `merge` (a merge commit keeps
-  the update commit as an ancestor of the target branch). It is a no-op on
-  GitHub, which would need a Git App / `gh pr merge --auto` instead;
+  the update commit as an ancestor of the target branch, so a branch recreated
+  from an older tip never reintroduces commits). On GitHub that is
+  `gh pr merge --auto --merge` and needs the repo setting *Allow auto-merge*
+  plus a `main` branch protection rule with required checks; if auto-merge is
+  not available the warning is printed and the PR stays open for a manual
+  merge. On Gitea it is the native `merge_when_checks_succeed` API. GitHub also
+  needs *Allow merge commits*;
 - if the PR cannot be opened, the pushed branch is deleted so the package is not
   blocked on the next run;
-- a branch that already exists on the remote is treated as "PR already open" and
-  skipped without failing (the auto-merge was already scheduled then).
+- a branch that already exists **with an open PR** is skipped without failing
+  (the auto-merge was already scheduled then). If the branch has no open PR
+  (merged/closed PR with the head branch retained), it is deleted and the
+  package is updated again — otherwise that branch would block the package
+  forever, since every later run would take it for "PR still open".
 
 Commit identity comes from your git config — the CI workflow sets
 `git config user.name/user.email` before running the updater (git worktrees
@@ -93,7 +100,8 @@ The instance URL is taken from `GITEA_INSTANCE_URL` (or its legacy alias
 `TEA_HOST`, which the workflow still exports); when both are unset, the
 updater falls back to the URL of the `--remote` git remote. `GITEA_TOKEN` is
 used both for `POST /repos/{owner}/{repo}/pulls` and for scheduling the
-auto-merge, so `--auto-merge` needs no extra configuration.
+auto-merge, so `--auto-merge` needs no extra configuration. On GitHub, `gh`
+uses its own auth (`GH_TOKEN` in CI, `gh auth login` locally).
 
 `git push` never sees these variables. In CI the credential usually comes from
 `actions/checkout`, which persists the job token in a git config file included
@@ -103,21 +111,18 @@ not persist credentials, embed a token in the remote URL instead.
 
 ## Automated Runs
 
-`.gitea/workflows/update.yml` runs `nix run .#updater -- --pr --auto-merge`
-every 5 hours (and on demand via `workflow_dispatch`), opening one PR per
-updated package and scheduling its merge. Gitea Actions does not export
-credentials on its own: the job token is only available as
-`${{ secrets.GITEA_TOKEN }}`, and the server URL as `${{ github.server_url }}`,
-so the workflow maps them to `GITEA_TOKEN` / `TEA_HOST` / `GITEA_INSTANCE_URL`.
-Pushing needs no extra step: `actions/checkout` persists the job token for the
-repo and its worktrees, and `permissions: contents: write` /
-`pull-requests: write` is what actually grants the rights (Gitea clamps the
-request against the repo/user Actions settings).
+`effects.nix` (the flake's `herculesCI.onSchedule.package-update`, run by the
+nixbot instance at home) runs `updater --pr --auto-merge` every 5 hours: nixbot
+gives the effect a writable clone with the forge token in `origin`, the effect
+exports `GH_TOKEN` from its `GitToken` secret, the updater opens one PR per
+updated package on GitHub and arms `gh pr merge --auto --merge`, so GitHub
+merges each PR once the required checks are green.
 
-The workflow passes `secrets.BOT_TOKEN` (a real user's PAT) as `GITEA_TOKEN`,
-not the job token: a PR opened with the job token never triggers a
-`pull_request` workflow, so the required check would never run and the
-scheduled auto-merge would wait forever.
+When running the updater under Gitea Actions instead, `GITEA_TOKEN` (plus
+`GITEA_INSTANCE_URL` / `TEA_HOST` for the API base) is still required for
+`--pr`, and `--auto-merge` schedules Gitea's native auto-merge. Use a real
+user's PAT, not the job token: a PR opened with the job token never triggers a
+`pull_request` workflow, so the required check would never run.
 
 ## Adding a New Package
 

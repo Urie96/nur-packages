@@ -22,7 +22,7 @@ jobs:
     #
     # Both the evaluation and the build live in this job on purpose: the build
     # gate is then part of the already-required check, so a merge cannot land
-    # before every package in ci.x86_64-linux.all has built.
+    # before every package in checks.x86_64-linux.all has built.
     runs-on: x86_64-linux
     steps:
       - name: Checkout repository
@@ -38,4 +38,4 @@ jobs:
         # what populates the cache for the runner's store. Building on the PR
         # head is equivalent because the merged tree equals the PR head (see
         # "require up-to-date branch" in the branch protection settings).
-        run: nix build --no-link --keep-going .#ci.x86_64-linux.all
+        run: nix build --no-link --keep-going .#checks.x86_64-linux.all

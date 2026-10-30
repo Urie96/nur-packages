@@ -53,8 +53,9 @@ def main() -> int:
     parser.add_argument(
         "--auto-merge",
         action="store_true",
-        help="With --pr: schedule the Gitea auto-merge, so the PR lands by "
-        "itself once the required checks pass",
+        help="With --pr: schedule the forge's auto-merge (GitHub: `gh pr merge "
+        "--auto`; Gitea: the merge API), so the PR lands by itself once the "
+        "required checks pass",
     )
     parser.add_argument(
         "--remote",

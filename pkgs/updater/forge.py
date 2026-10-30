@@ -25,9 +25,11 @@ from .gitops import (
 GITHUB = "github"
 GITEA = "gitea"
 
-# Merge style used when scheduling the auto-merge on Gitea. A merge commit keeps
-# the update branch's commit as an ancestor of the target branch, so a branch
-# recreated from an older tip never reintroduces commits that main already has.
+# Merge style used when scheduling the auto-merge. A merge commit keeps the
+# update branch's commit as an ancestor of the target branch, so a branch
+# recreated from an older tip never reintroduces commits that the target branch
+# already has. The updater has no flag for the style, so GitHub needs "Allow
+# merge commits" enabled; Gitea accepts it as one of its merge styles.
 MERGE_METHOD = "merge"
 
 
@@ -215,6 +217,97 @@ def find_open_pr(base: str, slug: str, head: str) -> dict[str, object] | None:
 
 
 def schedule_auto_merge(cwd: Path, remote: str, branch: str) -> bool:
+    """Let the forge merge the PR once the required checks pass.
+
+    GitHub gets `gh pr merge --auto`, so it merges when the branch protection's
+    required checks are green. Gitea gets its native `merge_when_checks_succeed`
+    through the API, with the same token that opened the PR. Scheduling before
+    any check has run is fine on both.
+    """
+    if resolve_forge(cwd, remote) == GITHUB:
+        return _schedule_github_auto_merge(cwd, remote, branch)
+    return _schedule_gitea_auto_merge(cwd, remote, branch)
+
+
+def _schedule_github_auto_merge(cwd: Path, remote: str, branch: str) -> bool:
+    """Arm GitHub's auto-merge with `gh` (GitHub only).
+
+    Requires the repository setting "Allow auto-merge" and a branch protection
+    rule with required checks; without them `gh` fails and the PR simply stays
+    open for a manual merge.
+    """
+    slug = remote_slug(get_remote_url(remote, cwd) or "")
+    if not slug:
+        print(f"  Warning: cannot derive owner/repo from the {remote} remote URL")
+        return False
+
+    cmd = [
+        "gh",
+        "pr",
+        "merge",
+        branch,
+        "--repo",
+        slug,
+        "--auto",
+        f"--{MERGE_METHOD}",
+    ]
+    print(f"  Running: {' '.join(cmd)}")
+    result = run_cmd(cmd, cwd=cwd, check=False)
+    if result.returncode != 0:
+        print(f"  Warning: auto-merge for {branch} failed: {result.stderr.strip()}")
+        return False
+
+    print(f"  Auto-merge scheduled for {branch}")
+    return True
+
+
+def has_open_pr(cwd: Path, remote: str, branch: str) -> bool:
+    """Whether an open PR exists for `branch`.
+
+    Used to tell "an earlier run opened a PR" (skip) from "a merged PR left its
+    branch behind" (delete it and update again). Unknown answers say True, so a
+    flaky forge API never deletes a branch that may still belong to a PR.
+    """
+    url = get_remote_url(remote, cwd)
+    slug = remote_slug(url) if url else None
+    if not slug:
+        print(f"  Warning: cannot derive owner/repo from the {remote} remote URL")
+        return True
+
+    if resolve_forge(cwd, remote) == GITHUB:
+        result = run_cmd(
+            [
+                "gh",
+                "pr",
+                "list",
+                "--repo",
+                slug,
+                "--head",
+                branch,
+                "--state",
+                "open",
+                "--json",
+                "number",
+            ],
+            cwd=cwd,
+            check=False,
+        )
+        if result.returncode != 0:
+            print(f"  Warning: cannot list PRs for {branch}: {result.stderr.strip()}")
+            return True
+        try:
+            pulls = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return True
+        return bool(pulls)
+
+    base = gitea_api_base(remote, cwd)
+    if not base:
+        return True
+    return find_open_pr(base, slug, branch) is not None
+
+
+def _schedule_gitea_auto_merge(cwd: Path, remote: str, branch: str) -> bool:
     """Let Gitea merge the PR once the required checks pass.
 
     This replaces a label plus a second workflow: the merge is scheduled here,
