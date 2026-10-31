@@ -118,17 +118,46 @@ in
         dev=daily
         git fetch --quiet --prune origin
 
+        # nixbot 的中心镜像本身是 blobless partial clone
+        # （clone --bare --filter=blob:none），每次 effect 的检出却是从这个
+        # 镜像 **本地路径** clone 出来的，而 git 不会把
+        # remote.origin.promisor / partialclonefilter 带到新克隆里：结果这个
+        # 检出看着普通，对象库里却只有镜像 materialize 过的那部分 blob。
+        # 于是在里面 checkout 一个没被检出过的提交（比如 origin/daily 相对
+        # 本次运行的 main 改动过的 modules/checks.nix）时，git 只会打两条
+        # 「unable to read sha1 file / invalid object」然后**返回 0**，把这
+        # 些文件从索引和工作区里删掉；接着 git merge 内部要跑
+        # `git stash create`，就会以「Cannot save the current index state」
+        # 「fatal: stash failed」失败，看上去像是冲突，其实一个冲突文件都没有。
+        # 这里把检出标记成 partial clone，git 缺 blob 时就会去 origin
+        # （nixbot 已把它换成带 token 的 forge URL）按需补拉。
+        git config remote.origin.promisor true
+        git config remote.origin.partialclonefilter blob:none
+
         # ── 1) 先把 main 合回 daily ──────────────────────────────
-        # 只落在 main 上的提交（比如 package-update 开的 PR 合并后）如果不
-        # 带回 daily，每晚的 daily → main 就会用 daily 的旧状态覆盖它
+        # 只落在 main 上的提交（每周 flake-update 的 flake.lock）如果不
+        # 带回 daily，每晚的 daily → main 就会用 daily 的旧 lock 覆盖它
         # 或者直接冲突。
         # 用默认 merge（允许 fast-forward）：daily 只是落后于 main 时直接
         # 快进，不会为「没有内容变化」留一个合并提交。
         git checkout --quiet -B "$dev" "origin/$dev"
+        # 上面这条在缺 blob 时只打错误、仍返回 0（见上），工作区因此不干净时
+        # 直接停下，别把问题拖成后面那句「合并冲突」。
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "❌ 检出 $dev 后工作区不干净，本地对象库可能不全：" >&2
+          git --no-pager status --short >&2
+          exit 1
+        fi
         if ! git merge --no-edit \
           -m "chore: merge $base into $dev" "origin/$base"; then
-          echo "❌ $base → $dev 合并冲突，需要手动解决：" >&2
-          git --no-pager diff --name-only --diff-filter=U >&2
+          if [ -n "$(git --no-pager diff --name-only --diff-filter=U)" ]; then
+            echo "❌ $base → $dev 合并冲突，需要手动解决：" >&2
+            git --no-pager diff --name-only --diff-filter=U >&2
+          else
+            echo "❌ $base → $dev 合并失败，但没有冲突文件" >&2
+            echo "   （本地对象库不全或工作区不干净，不是内容冲突）" >&2
+            git --no-pager status --short >&2
+          fi
           exit 1
         fi
         if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$dev")" ]; then
