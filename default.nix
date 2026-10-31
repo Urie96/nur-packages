@@ -43,6 +43,7 @@
   copy = pkgs.callPackage ./pkgs/copy { };
   coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
   sops-render = pkgs.callPackage ./pkgs/sops-render { };
+  rbw = pkgs.callPackage ./pkgs/rbw { };
   xopen = pkgs.callPackage ./pkgs/xopen { };
   apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
 
