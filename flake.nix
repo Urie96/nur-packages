@@ -10,7 +10,11 @@
   };
 
   outputs =
-    { self, nixpkgs, nixbot }:
+    {
+      self,
+      nixpkgs,
+      nixbot,
+    }:
     let
       systems = [
         "x86_64-linux"
@@ -43,12 +47,9 @@
         ) self.legacyPackages.${system}
       );
 
-      # nixbot 只构建 flake 的 `checks`，所以可构建的包集合只在这里暴露，
-      # 不再额外提供 `ci.<system>.all`（那样同一批 derivation 会被求值两遍）。
       checks = forAllSystems (
         system:
         let
-          pkgs = pkgsFor system;
           ci = ciFor system;
         in
         nixpkgs.lib.listToAttrs (
@@ -57,16 +58,6 @@
             value = p;
           }) ci.buildPkgs
         )
-        // {
-          # 一个把全部可缓存输出链在一起的 aggregate：本地 / Gitea Actions 想一次
-          # 构建整批并拿到 `./result` 时用它（`nix build .#checks.<system>.all`）。
-          all = pkgs.linkFarm "nur-checks-${system}" (
-            nixpkgs.lib.imap0 (i: p: {
-              name = "${toString i}-${p.name or "pkg"}";
-              path = p;
-            }) ci.cacheOutputs
-          );
-        }
       );
 
       # 定时任务：每 5 小时给有更新的包开 PR，每晚把 daily 合进 main。
