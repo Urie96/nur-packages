@@ -15,6 +15,7 @@
   flatnvim = pkgs.callPackage ./pkgs/flatnvim { };
   keywrap = pkgs.callPackage ./pkgs/keywrap { };
   lazydeck = pkgs.callPackage ./pkgs/lazydeck { };
+  preview = pkgs.callPackage ./pkgs/preview { };
   NeteaseCloudMusicApi = pkgs.callPackage ./pkgs/NeteaseCloudMusicApi { };
   tencent-cloud-update-ssl = pkgs.callPackage ./pkgs/tencent-cloud-update-ssl { };
   hackbook = pkgs.callPackage ./pkgs/hackbook { };
