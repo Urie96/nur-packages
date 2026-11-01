@@ -15,6 +15,7 @@
   flatnvim = pkgs.callPackage ./pkgs/flatnvim { };
   keywrap = pkgs.callPackage ./pkgs/keywrap { };
   lazydeck = pkgs.callPackage ./pkgs/lazydeck { };
+  preview = pkgs.callPackage ./pkgs/preview { };
   NeteaseCloudMusicApi = pkgs.callPackage ./pkgs/NeteaseCloudMusicApi { };
   tencent-cloud-update-ssl = pkgs.callPackage ./pkgs/tencent-cloud-update-ssl { };
   hackbook = pkgs.callPackage ./pkgs/hackbook { };
@@ -43,6 +44,7 @@
   copy = pkgs.callPackage ./pkgs/copy { };
   coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
   sops-render = pkgs.callPackage ./pkgs/sops-render { };
+  rbw = pkgs.callPackage ./pkgs/rbw { };
   xopen = pkgs.callPackage ./pkgs/xopen { };
   apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
 
