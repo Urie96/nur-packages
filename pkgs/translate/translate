@@ -12,7 +12,7 @@ import sys
 import urllib.request
 import urllib.error
 
-MODEL = "deepseek-v4-flash"
+MODEL = "deepseek-flash"
 BASE_URL = "https://api.deepseek.com/chat/completions"
 TRANSLATE_API_URL = "https://trans.lubui.com:8443/translate"
 
@@ -41,9 +41,7 @@ def get_input_text():
 def rbw_get(key):
     """从 rbw 获取指定 key 的值"""
     try:
-        return subprocess.check_output(
-            ["rbw", "get", key], text=True
-        ).strip()
+        return subprocess.check_output(["rbw", "get", key], text=True).strip()
     except FileNotFoundError:
         print("Error: rbw command not found", file=sys.stderr)
         sys.exit(1)
