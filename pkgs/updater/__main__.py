@@ -116,8 +116,7 @@ def main() -> int:
     print(f"Results: {success_count} succeeded, {failure_count} failed")
     if skipped:
         print(
-            f"Skipped (not available for {current_system()}): "
-            f"{', '.join(sorted(skipped))}"
+            f"Skipped (not updatable from {current_system()}): {', '.join(sorted(skipped))}"
         )
     if failed:
         print(f"Failed packages: {', '.join(failed)}")

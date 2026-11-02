@@ -6,11 +6,11 @@
 }:
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "kitty";
-  version = "0.49.0";
+  version = "0.49.2";
 
   src = fetchurl {
     url = "https://github.com/kovidgoyal/kitty/releases/download/v${finalAttrs.version}/kitty-${finalAttrs.version}.dmg";
-    hash = "sha256-jMIPsw6VpRQa1UNFFvyjMXcjOn9JI21DG6+c6QWD6Yw=";
+    hash = "sha256-5SS4lBRdict2tYTjqWkRlq5Wv6MdUThKRKp3QlK3zvc=";
   };
 
   # dmg 是 APFS，nixpkgs 的 undmg（只支持 HFS）解不开，用支持 APFS 的 7zz；
