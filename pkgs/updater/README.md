@@ -41,12 +41,15 @@ Skipping: only available for aarch64-darwin, not x86_64-linux
 Two escape hatches:
 
 - `--all-systems` — do not filter. Packages whose `update.py` is platform
-  agnostic (`nix-prefetch-url` + hashing) are then updated from any host, e.g.
-  `wechat`/`raycast` from Linux. Packages driven by `nix-update` are still
-  skipped cross-system, because nix-update derives the new hash by *building*
-  the fixed-output `src` derivation and a darwin `fetchurl` cannot be built on
-  Linux (`error: platform mismatch`). Give such a package an `update.py` if you
-  want it updated from a foreign host.
+  agnostic (`nix-prefetch-url` + hashing) are then updated from any host.
+  Packages driven by `nix-update` are also attempted, through the flake
+  attribute that exists for their system (`packages.aarch64-darwin.x`):
+  nix-update derives the new hash by *building* the fixed-output `src`
+  derivation, so this works only when Nix can build for that system — either
+  natively or through a remote builder (e.g. an `aarch64-darwin` machine in
+  `nix.buildMachines`). Without such a builder Nix aborts with
+  `a 'aarch64-darwin' ... is required to build ..., but I am a 'x86_64-linux'`
+  and the updater reports the package as skipped (not failed).
 - `-p <name>` — explicitly naming a package disables the check for it.
 
 Neither flag changes what `nix-update` uses as flake attribute: packages are
@@ -112,11 +115,19 @@ not persist credentials, embed a token in the remote URL instead.
 ## Automated Runs
 
 `effects.nix` (the flake's `herculesCI.onSchedule.package-update`, run by the
-nixbot instance at home) runs `updater --pr --auto-merge` every 5 hours: nixbot
-gives the effect a writable clone with the forge token in `origin`, the effect
-exports `GH_TOKEN` from its `GitToken` secret, the updater opens one PR per
-updated package on GitHub and arms `gh pr merge --auto --merge`, so GitHub
-merges each PR once the required checks are green.
+nixbot instance at home) runs `updater --pr --auto-merge --all-systems` every 5
+hours: nixbot gives the effect a writable clone with the forge token in
+`origin`, the effect exports `GH_TOKEN` from its `GitToken` secret, the updater
+opens one PR per updated package on GitHub and arms `gh pr merge --auto
+--merge`, so GitHub merges each PR once the required checks are green.
+
+`--all-systems` is what makes the aarch64-darwin-only packages (`kitty`,
+`tinycast`) updatable from the x86_64-linux effect host: nix-update builds the
+fixed-output DMG derivation for `packages.aarch64-darwin.<pkg>`, and the
+`aarch64-darwin` remote builder configured in `nix.buildMachines` (macmini)
+executes that build and reports the hash. On hosts without a builder for the
+package's system the package is reported as skipped instead of failing the
+run, so the same command still works on a plain x86_64-linux runner.
 
 When running the updater under Gitea Actions instead, `GITEA_TOKEN` (plus
 `GITEA_INSTANCE_URL` / `TEA_HOST` for the API base) is still required for

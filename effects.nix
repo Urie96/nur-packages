@@ -73,14 +73,15 @@ in
         git config user.name nixbot
         git config user.email nixbot@localhost
 
-        # 默认只更新当前 system（x86_64-linux）能构建的包。想让带 update.py
-        # 的 darwin-only 包也从这里更新，加 --all-systems；nix-update 驱动的
-        # darwin 包加不加都会被跳过（固定输出无法在 linux 上构建）。
+        # --all-systems：只发布在 aarch64-darwin 的包（kitty、tinycast）也尝试
+        # 更新。nix-update 用「构建固定输出 src」的方式取 hash，home-server 的
+        # nix.buildMachines 里有 aarch64-darwin 的 macmini，所以这一步会派发
+        # 过去执行。没有对应 builder 的机器上会自动跳过（不算失败）。
         #
         # --auto-merge：每个 PR 都 arm GitHub 的 auto-merge，required checks
         # 绿了由 GitHub 自己合并。前提是仓库设置里允许 Allow auto-merge，并且
         # main 的 branch protection 配了 required checks（同上文）。
-        ${pkgs.lib.getExe updater} --pr --auto-merge
+        ${pkgs.lib.getExe updater} --pr --auto-merge --all-systems
       '';
     };
   };

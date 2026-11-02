@@ -119,6 +119,24 @@ def check_available(pkg: Package, flake_root: Path) -> bool:
     return False
 
 
+def no_builder_for_target(stderr: str) -> bool:
+    """Whether Nix refused to build because a builder for the drv's system is
+    missing, as opposed to a real build failure.
+
+    `nix-update` fetches the new hash by building the fixed-output `src`
+    derivation for the package's system and parsing the hash mismatch error.
+    Without a builder for that system Nix aborts before starting anything:
+
+        error: a 'aarch64-darwin' with features {} is required to build
+        '/nix/store/....drv', but I am a 'x86_64-linux' with features {...}
+
+    Older Nix versions used "Cannot build ... platform mismatch".
+    """
+    if "platform mismatch" in stderr:
+        return True
+    return "is required to build" in stderr and "but I am a" in stderr
+
+
 def run_nix_update(
     pkg: Package,
     flake_root: Path,
@@ -136,17 +154,14 @@ def run_nix_update(
     target = publish_system(pkg.name, flake_root) or current
 
     if target != current:
-        # nix-update derives the new hash by building the (fixed-output) src
-        # derivation, and a fetchurl for another platform cannot be built here:
-        #   error: Cannot build ...dmg.drv: platform mismatch
-        # Packages with a custom update.py have no such problem because they
-        # call nix-prefetch-url directly, so they *can* cross-update.
+        # The hash is obtained by building the fixed-output src derivation, so
+        # nix-update needs Nix to be able to build for `target`. A configured
+        # remote builder (e.g. an aarch64-darwin machine in nix.buildMachines)
+        # makes that work from here; without one the run is a no-op (detected
+        # below from stderr) instead of a failure.
         print(
-            f"  Skipping: nix-update needs a native {target} host "
-            "(give this package an update.py to update it from here)"
+            f"  {pkg.name} is only available for {target}, trying a builder for {target}"
         )
-        skipped.add(pkg.name)
-        return True
 
     cmd = [
         "nix-update",
@@ -166,6 +181,13 @@ def run_nix_update(
     result = run_cmd(cmd, cwd=flake_root, check=False)
 
     if result.returncode != 0:
+        if target != current and no_builder_for_target(result.stderr):
+            print(
+                f"  Skipping: no {target} builder configured "
+                "(add one to nix.buildMachines to update it from here)"
+            )
+            skipped.add(pkg.name)
+            return True
         print(f"  Error: {result.stderr}")
         return False
 
