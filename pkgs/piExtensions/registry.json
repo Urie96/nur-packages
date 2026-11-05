@@ -2,9 +2,9 @@
   "packages": {
     "pi-web-access": {
       "name": "pi-web-access",
-      "version": "0.46.0",
-      "tarball": "https://registry.npmjs.org/pi-web-access/-/pi-web-access-0.46.0.tgz",
-      "hash": "sha512-UfeJKU0TPmQU/3hmfAC5Ot/e5Ib0uHkg2+VHM7Ae4kVilLZf7ocGqHFzBzOkYuGLZ87LobzkrhwTAq8lO/N7cQ==",
+      "version": "0.47.0",
+      "tarball": "https://registry.npmjs.org/pi-web-access/-/pi-web-access-0.47.0.tgz",
+      "hash": "sha512-Z176wTJjHw9Y+NpZ3WxOmKnh/7Sy3mu4QR05nBS/v6GRd5Cp7g5GnLIzI9LOT1IdR1105qXFS+L3LBUfkOMy8g==",
       "tier": "B",
       "piManifest": {
         "video": "https://github.com/nicobailon/pi-web-access/raw/refs/heads/main/pi-web-fetch-demo.mp4",
