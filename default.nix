@@ -31,6 +31,7 @@
   sing-box = pkgs.callPackage ./pkgs/sing-box { };
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
   kosync = pkgs.callPackage ./pkgs/kosync { };
+  ownfoil = pkgs.callPackage ./pkgs/ownfoil { };
   fira-code-italic = pkgs.callPackage ./pkgs/fira-code-italic { };
   fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
 
