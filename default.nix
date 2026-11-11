@@ -32,6 +32,7 @@
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
   kosync = pkgs.callPackage ./pkgs/kosync { };
   ownfoil = pkgs.callPackage ./pkgs/ownfoil { };
+  paperless-gpt = pkgs.callPackage ./pkgs/paperless-gpt { };
   fira-code-italic = pkgs.callPackage ./pkgs/fira-code-italic { };
   fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
 
