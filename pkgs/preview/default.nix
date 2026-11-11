@@ -4,13 +4,13 @@
 }:
 rustPlatform.buildRustPackage {
   pname = "preview";
-  version = "0-unstable-2026-11-01";
+  version = "0-unstable-2026-11-11";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = "preview-bin.yazi";
-    rev = "b9ce4a5f85fc6e7473c543263065325da80ec2a2";
-    sha256 = "sha256-puzwS39u35hb3xlv0hD/BOkKz4HT0j3X6/1jKUlT0KM=";
+    rev = "73e32eecd52e704f79bcf22cc32d3bde5a6ecb76";
+    sha256 = "sha256-SuV6l0e/9rOGXA1DmQiAOdqghiFkcgSm6lCscvzA/H8=";
   };
 
   cargoRoot = "preview";
