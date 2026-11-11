@@ -22,7 +22,11 @@ buildGo127Module (finalAttrs: {
   # Keep dependencies outside that tree, in the module cache rather than vendor/.
   proxyVendor = true;
 
-  patches = [ ./default-prompts-dir.patch ];
+  patches = [
+    ./default-prompts-dir.patch
+    # OPENAI_EXTRA_BODY：给 OpenAI 兼容端点透传请求体字段（用来关掉 DeepSeek 默认的思考模式）。
+    ./openai-extra-body.patch
+  ];
 
   nativeBuildInputs = [ makeWrapper ];
 
