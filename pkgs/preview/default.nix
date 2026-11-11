@@ -9,8 +9,8 @@ rustPlatform.buildRustPackage {
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = "preview-bin.yazi";
-    rev = "73e32eecd52e704f79bcf22cc32d3bde5a6ecb76";
-    sha256 = "sha256-SuV6l0e/9rOGXA1DmQiAOdqghiFkcgSm6lCscvzA/H8=";
+    rev = "73608b36db52b4015afe938fb0d7960ca193f429";
+    sha256 = "sha256-0indxiSovq2/Sx8M01ExoiZywyReWn3doI7/8rYMNOs=";
   };
 
   cargoRoot = "preview";
