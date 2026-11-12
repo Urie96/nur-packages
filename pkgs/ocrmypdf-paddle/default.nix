@@ -11,8 +11,6 @@
   lib,
   fetchFromGitHub,
   pythonPackages,
-  # 嵌进宿主 python 环境时（paperless）由宿主提供 ocrmypdf，依赖它会成环。
-  withOcrmypdf ? true,
   withOnnxRuntime ? true,
 }:
 
@@ -30,11 +28,13 @@ pythonPackages.buildPythonPackage {
 
   build-system = [ pythonPackages.setuptools ];
 
-  # withOcrmypdf = false 时 ocrmypdf 由宿主环境提供，nixpkgs 的
-  # checkPythonRuntimeDeps 会因为 wheel 元数据里写着 Required-Dist: ocrmypdf 而报
-  # "ocrmypdf not installed"。pythonRelaxDeps 对源码构建没用（它只处理 wheel），
-  # 所以直接在 pyproject 里把这条要求删掉。
-  postPatch = lib.optionalString (!withOcrmypdf) ''
+  # 这个插件永远是「被嵌进宿主 python 环境」用的（nur.ocrmypdf / nur.paperless
+  # 都在自己的 scope 里 callPackage 它），ocrmypdf 由宿主提供 —— 在这里依赖它
+  # 会成环，还会多带一份 ocrmypdf（+ 全语言 tesseract）进闭包。
+  # 但 wheel 元数据里仍写着 Required-Dist: ocrmypdf，nixpkgs 的
+  # checkPythonRuntimeDeps 会报 "ocrmypdf not installed"；pythonRelaxDeps 对
+  # 源码构建无效（只处理 wheel），所以直接在 pyproject 里把这条要求删掉。
+  postPatch = ''
     sed -i '/"ocrmypdf>=/d' pyproject.toml
   '';
 
@@ -45,7 +45,6 @@ pythonPackages.buildPythonPackage {
       paddlepaddle
       pillow
     ]
-    ++ lib.optionals withOcrmypdf [ ocrmypdf ]
     ++ lib.optionals withOnnxRuntime [ onnxruntime ]
     # paddlex 把 imagesize / pypdfium2 / python-bidi / opencv-contrib-python 声明在
     # "ocr-core" extra 里，而 nixpkgs 不传播 optional-dependencies；缺了它们

@@ -2,14 +2,6 @@
   pkgs ? import <nixpkgs> { },
 }:
 
-let
-  # PaddleOCR 的 ocrmypdf 插件。这个单独暴露的版本自带 ocrmypdf 依赖；
-  # paperless（pkgs/paperless）那边是在它自己的 python scope 里重新构建一份，
-  # 免得出现两份 ocrmypdf。
-  ocrmypdf-paddle = pkgs.callPackage ./pkgs/ocrmypdf-paddle {
-    pythonPackages = pkgs.python313Packages;
-  };
-in
 {
   updater = pkgs.callPackage ./pkgs/updater { };
 
@@ -41,11 +33,8 @@ in
   kosync = pkgs.callPackage ./pkgs/kosync { };
   ownfoil = pkgs.callPackage ./pkgs/ownfoil { };
   paperless-gpt = pkgs.callPackage ./pkgs/paperless-gpt { };
-  # OCR 引擎是 PaddleOCR 的 paperless-ngx，见 pkgs/paperless/default.nix
-  # 不用 callPackage：参数名 tesseract5 / python3Packages 会被它自动从 pkgs 填成
-  # 默认值（全语言 tesseract + python3.14），必须让文件自己管默认值。
-  paperless = import ./pkgs/paperless { inherit pkgs; lib = pkgs.lib; };
-  ocrmypdf-paddle = ocrmypdf-paddle;
+  paperless = pkgs.callPackage ./pkgs/paperless { };
+  ocrmypdf = pkgs.callPackage ./pkgs/ocrmypdf { };
   fira-code-italic = pkgs.callPackage ./pkgs/fira-code-italic { };
   fira-mono-italic = pkgs.callPackage ./pkgs/fira-mono-italic { };
 

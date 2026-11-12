@@ -24,7 +24,7 @@
       ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
 
-      # 不能直接用 nixpkgs.legacyPackages：paperless / ocrmypdf-paddle 的依赖链里
+      # 不能直接用 nixpkgs.legacyPackages：paperless / ocrmypdf 的依赖链里
       # paddlex 硬依赖两个非自由/不安全包（见下面 config）。其余包的求值结果不变。
       pkgsFor =
         system:

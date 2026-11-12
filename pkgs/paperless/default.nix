@@ -20,25 +20,26 @@
 {
   lib,
   pkgs,
+  # 名字必须叫 tesseract5：NixOS 模块的 services.paperless.package.apply 会
+  # `pkg.override { tesseract5 = pkg.tesseract5.override { enableLanguages = ...; }; }`。
+  # 但也正因为这个名字在 pkgs 里存在，callPackage 会把它自动填成全语言版，
+  # 所以 default.nix 里必须在调用点显式传 tesseractSlim。
+  tesseract5 ? pkgs.callPackage ../tesseract-slim { },
+  # 不叫 python3Packages / pythonPackages：前者会被 callPackage 自动填成 3.14
+  # （paddlepaddle 没有 cp314 wheel），后者是 nixpkgs 里 Python 2 的别名。
+  pythonSet ? pkgs.python313Packages,
+  # 关掉 AI 重依赖（torch / llama-index-embeddings-* …）
+  withAi ? false,
+  extraPythonPackageOverrides ? null,
 }:
 
 let
-  tesseractSlim = pkgs.tesseract5.override {
-    enableLanguages = [
-      "chi_sim"
-      "eng"
-      "equ"
-      "osd"
-    ];
-  };
-
   defaultOverrides =
     withAi: pythonSet: final: prev:
     (if withAi then { } else aiStubOverrides pythonSet final prev)
     // {
     ocrmypdf-paddleocr = final.callPackage ../ocrmypdf-paddle {
       pythonPackages = final;
-      withOcrmypdf = false;
     };
     # paddleocr 默认带 pdf2docx + pymupdf（PDF→docx），后者把 mupdf 拖进来，
     # 而 pymupdf 内部用 `mupdf.override { enableOcr = true; }`，于是又拉了一份
@@ -113,22 +114,15 @@ let
       }) aiOnlyDeps
     );
 
-  mkPaperless =
-    {
-      pythonSet ? pkgs.python313Packages,
-      # 默认 false：去掉上面那批 AI 重依赖。要开 PAPERLESS_AI_ENABLED 且用本地
-      # embedding 时，用 paperless.override { withAi = true; }。
-      withAi ? false,
-      # OCR 已经不走 tesseract，但 ocrmypdf 的 builtin tesseract 插件 check_options
-      # 会无条件执行 `tesseract --version`（pluggy 会把所有 check_options 都跑一遍），
-      # 所以它必须存在且可用。只编需要的语言包：
-      # 整个 tesseract 闭包 1.1 GiB（其中 tessdata "all" 占 1.0 GiB）→ 169 MiB。
-      tesseract5 ? tesseractSlim,
-      extraPythonPackageOverrides ? defaultOverrides withAi pythonSet,
-    }:
-    (pkgs.paperless-ngx.override {
-      python3Packages = pythonSet;
-      inherit tesseract5 extraPythonPackageOverrides;
+in
+(pkgs.paperless-ngx.override {
+  python3Packages = pythonSet;
+      inherit tesseract5;
+      extraPythonPackageOverrides =
+        if extraPythonPackageOverrides != null then
+          extraPythonPackageOverrides
+        else
+          defaultOverrides withAi pythonSet;
     }).overrideAttrs (old: {
       # 这些用例会真的跑一遍 OCR：插件第一次调用就要去 HuggingFace / BOS 下
       # PP-OCRv6 权重，sandbox 里没有网所以必然失败。其余用例照常跑。
@@ -145,6 +139,4 @@ let
       meta = (old.meta or { }) // {
         platforms = [ "x86_64-linux" ];
       };
-    });
-in
-lib.makeOverridable mkPaperless { }
+    })
