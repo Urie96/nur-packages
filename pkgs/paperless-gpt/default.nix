@@ -84,7 +84,6 @@ buildGo127Module (finalAttrs: {
     mainProgram = "paperless-gpt";
     platforms = [
       "x86_64-linux"
-      "aarch64-linux"
     ];
   };
 })
