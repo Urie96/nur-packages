@@ -136,6 +136,14 @@ in
         (old.disabledTestPaths or [ ])
         ++ [
           "src/paperless/tests/parsers/test_tesseract_parser.py"
+          # 时钟相关的上游 flake，与我们的改动无关：该测试 @override_settings
+          # TIME_ZONE="America/Chicago"，而 consumer 用
+          # timezone.make_aware(fromtimestamp(st_mtime)) 造 created（fromtimestamp
+          # 取进程 TZ = 沙箱里的 UTC），再用 timezone.localtime(now) 取"今天"。
+          # 于是 UTC 日期与 Chicago 日期不同的那段时间（Chicago 00:00-06:00，
+          # 即 UTC 06:00-12:00）断言 created.day == today 必然差一天，
+          # 报 AssertionError: 13 != 12。见上游同族问题。
+          "src/documents/tests/test_consumer.py::TestConsumer::testNormalOperation"
         ]
         # embedding/ollama 的包是空壳（见 stubbedAiDeps），paperless_ai 的测试
         # 会 import 它们，当然过不了
