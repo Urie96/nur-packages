@@ -28,15 +28,12 @@
   # 不叫 python3Packages / pythonPackages：前者会被 callPackage 自动填成 3.14
   # （paddlepaddle 没有 cp314 wheel），后者是 nixpkgs 里 Python 2 的别名。
   pythonSet ? pkgs.python313Packages,
-  # 关掉 AI 重依赖（torch / llama-index-embeddings-* …）
-  withAi ? false,
   extraPythonPackageOverrides ? null,
 }:
 
 let
-  defaultOverrides =
-    withAi: pythonSet: final: prev:
-    (if withAi then { } else aiStubOverrides pythonSet final prev)
+  defaultOverrides = pythonSet: final: prev:
+    aiStubOverrides pythonSet final prev
     // {
     ocrmypdf-paddleocr = final.callPackage ../ocrmypdf-paddle {
       pythonPackages = final;
@@ -73,13 +70,15 @@ let
   # 在 python scope 里把它们替换成只有 dist-info 的空包（版本号沿用真包，
   # 免得别处的版本约束检查报错）。省 3.4 GiB（单 llama-index-embeddings-huggingface
   # 就拖着 torch + sentence-transformers + transformers）。
-  # 要真的用 AI 本地 embedding：paperless.override { withAi = true; }。
-  aiOnlyDeps = [
+  #
+  # 唯一保留的是 llama-index-llms-openai-like：本机只用 openai-like 这一条
+  # LLM 路径（DeepSeek，纯 HTTP 调用），不做本地 embedding、不用 ollama，
+  # 所以 embedding 三件套 / ollama 两个包 / torch 全家都能继续是空壳。
+  stubbedAiDeps = [
     "llama-index-embeddings-huggingface"
     "llama-index-embeddings-ollama"
     "llama-index-embeddings-openai-like"
     "llama-index-llms-ollama"
-    "llama-index-llms-openai-like"
     "sentence-transformers"
     # torch 是 paperless.dependencies 里的直接依赖（AI embedding 用），
     # 顺手把它的训练/日志生态（triton 带 llvm 541 MiB、wandb）一起换掉。
@@ -111,7 +110,7 @@ let
       map (name: {
         inherit name;
         value = stubPythonPkg pythonSet name prev.${name}.version;
-      }) aiOnlyDeps
+      }) stubbedAiDeps
     );
 
 in
@@ -122,17 +121,33 @@ in
         if extraPythonPackageOverrides != null then
           extraPythonPackageOverrides
         else
-          defaultOverrides withAi pythonSet;
+          defaultOverrides pythonSet;
     }).overrideAttrs (old: {
+      # 注意：3.1.x 的 openai-like 路径固定走 chat_with_tools(tool_required=True)，
+      # 会发 tool_choice="required"；而 deepseek-flash 默认开 thinking，thinking
+      # 模式拒绝强制 tool_choice（API 返回 "Thinking mode does not support this
+      # tool_choice"），所以 AI 建议在这条链上会直接 400。
+      # 要解决只有两条路：paperless ≥ 3.3 用 PAPERLESS_AI_LLM_EXTRA_PARAMS 关
+      # thinking，或换一个默认不开思考的后端。这里不做源码 patch。
+      #
       # 这些用例会真的跑一遍 OCR：插件第一次调用就要去 HuggingFace / BOS 下
       # PP-OCRv6 权重，sandbox 里没有网所以必然失败。其余用例照常跑。
       disabledTestPaths =
         (old.disabledTestPaths or [ ])
         ++ [
           "src/paperless/tests/parsers/test_tesseract_parser.py"
+          # 时钟相关的上游 flake，与我们的改动无关：该测试 @override_settings
+          # TIME_ZONE="America/Chicago"，而 consumer 用
+          # timezone.make_aware(fromtimestamp(st_mtime)) 造 created（fromtimestamp
+          # 取进程 TZ = 沙箱里的 UTC），再用 timezone.localtime(now) 取"今天"。
+          # 于是 UTC 日期与 Chicago 日期不同的那段时间（Chicago 00:00-06:00，
+          # 即 UTC 06:00-12:00）断言 created.day == today 必然差一天，
+          # 报 AssertionError: 13 != 12。见上游同族问题。
+          "src/documents/tests/test_consumer.py::TestConsumer::testNormalOperation"
         ]
-        # withAi = false 时 AI 的 embedding/llm 包是空壳，AI 自己的测试当然过不了
-        ++ lib.optionals (!withAi) [ "src/paperless_ai/tests" ];
+        # embedding/ollama 的包是空壳（见 stubbedAiDeps），paperless_ai 的测试
+        # 会 import 它们，当然过不了
+        ++ [ "src/paperless_ai/tests" ];
       # PaddleOCR / PaddlePaddle 只出 x86_64 的 wheel，别处根本跑不起来。
       # 标了 meta.platforms 后 flake 的 packages 过滤（meta.availableOn）就只会
       # 在 x86_64-linux 上暴露它。
