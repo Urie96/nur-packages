@@ -24,21 +24,9 @@
       ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
 
-      # 不能直接用 nixpkgs.legacyPackages：paperless / ocrmypdf 的依赖链里
-      # paddlex 硬依赖两个非自由/不安全包（见下面 config）。其余包的求值结果不变。
-      pkgsFor =
-        system:
-        import nixpkgs {
-          inherit system;
-          config = {
-            # paddlex 把所有模型源适配器都写进了依赖：modelscope 被 nixpkgs 标成
-            # insecure（模型源里有远程代码执行），aistudio-sdk 是 unfree。
-            # 我们只用 HuggingFace / BOS 两个源，不会调用它们，但包必须在场，
-            # 否则 PaddleOCR 初始化时 importlib.metadata 的检查会失败。
-            permittedInsecurePackages = [ "python3.13-modelscope-1.39.1" ];
-            allowUnfreePredicate = p: nixpkgs.lib.getName p == "aistudio-sdk";
-          };
-        };
+      # 以前这里要给 paddlex 放开 modelscope（insecure）和 aistudio-sdk（unfree）。
+      # OCR 换成 RapidOCR 之后整条 paddle 链都不在了，用回默认 nixpkgs。
+      pkgsFor = system: nixpkgs.legacyPackages.${system};
 
       ciFor =
         system:
