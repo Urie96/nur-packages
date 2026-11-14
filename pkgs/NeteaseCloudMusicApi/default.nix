@@ -5,12 +5,12 @@
 
 buildNpmPackage rec {
   pname = "NeteaseCloudMusicApi";
-  version = "4.32.0";
+  version = "4.33.0";
   src = fetchzip {
     url = "https://registry.npmjs.org/${pname}/-/${pname}-${version}.tgz";
-    hash = "sha256-LAXVSh4E7MyLyr4EtN/PMXkTmScYaUrm7KIz404uaUU=";
+    hash = "sha256-EDiEC8+2kHPO/A0rv/U3PE7ZsV/2SbbqHKK45KzRg70=";
   };
-  npmDepsHash = "sha256-FHGPZ2bTPaWWG1JorTsWyObB0Lb1yl9gWDZA9D/pRpU=";
+  npmDepsHash = "sha256-cFtxA8n1G9mZBD8vBEFOAjPyy559BBSOIkGBhwxpiFU=";
 
   dontNpmBuild = true;
   postPatch = ''
