@@ -7,13 +7,13 @@
 }:
 stdenvNoCC.mkDerivation (finalAttrs: {
   pname = "tinycast";
-  version = "0.12.11";
+  version = "0.12.15";
 
   # 上游 release 里有两个 dmg：Tinycast-<ver>.dmg 是 arm64-only 的（小一半），
   # Tinycast-Universal-<ver>.dmg 才是给 Intel 的，这里跟 raycast 一样只打 arm64。
   src = fetchurl {
     url = "https://github.com/abue-ammar/tinycast/releases/download/v${finalAttrs.version}/Tinycast-${finalAttrs.version}.dmg";
-    hash = "sha256-fdxekolncM2RROF17rhwDaLLSDLBw84YpR9lB0d4AUg=";
+    hash = "sha256-6ZFd23uDOUKGZOIsWuHRa1BrtLr39x1JbDfbBuf0RYk=";
   };
 
   nativeBuildInputs = [
