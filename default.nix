@@ -47,6 +47,7 @@
   sops-render = pkgs.callPackage ./pkgs/sops-render { };
   rbw = pkgs.callPackage ./pkgs/rbw { };
   xopen = pkgs.callPackage ./pkgs/xopen { };
+  tgdl = pkgs.callPackage ./pkgs/tgdl { };
   apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
 
   # binary
