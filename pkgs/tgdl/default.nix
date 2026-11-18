@@ -4,12 +4,12 @@
 }:
 buildGoModule rec {
   pname = "tgdl";
-  version = "0-unstable-2026-11-18";
+  version = "0.2.0";
 
   src = fetchFromGitHub {
     owner = "Urie96";
     repo = pname;
-    rev = "a926b1d4e3d7a359c725a04b135d911901fb79ec";
+    rev = version;
     sha256 = "sha256-0y0qzx7qXRrrVazxrDzBT/Ff8wrWHuqT9u4+XEiizEE=";
   };
 
