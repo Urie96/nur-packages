@@ -13,6 +13,7 @@
   translate = pkgs.callPackage ./pkgs/translate { };
   foxtrot = pkgs.callPackage ./pkgs/foxtrot { };
   flatnvim = pkgs.callPackage ./pkgs/flatnvim { };
+  herdr-nvim = pkgs.callPackage ./pkgs/herdr-nvim { };
   keywrap = pkgs.callPackage ./pkgs/keywrap { };
   lazydeck = pkgs.callPackage ./pkgs/lazydeck { };
   preview = pkgs.callPackage ./pkgs/preview { };
