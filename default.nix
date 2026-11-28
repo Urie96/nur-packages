@@ -52,6 +52,7 @@
   tgdl = pkgs.callPackage ./pkgs/tgdl { };
   apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
   hacbrewpacklz = pkgs.callPackage ./pkgs/hacbrewpacklz { };
+  baton = pkgs.callPackage ./pkgs/baton { };
 
   # binary
   kitty = pkgs.callPackage ./pkgs/kitty { };
