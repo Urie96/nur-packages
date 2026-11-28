@@ -3,6 +3,7 @@
   fetchFromGitHub,
   pkg-config,
   openssl,
+  oniguruma,
 }:
 rustPlatform.buildRustPackage rec {
   pname = "lazydeck";
@@ -19,8 +20,11 @@ rustPlatform.buildRustPackage rec {
 
   nativeBuildInputs = [ pkg-config ];
 
+  # nixpkgs 的 cargo-setup-hook 会导出 RUSTONIG_SYSTEM_LIBONIG=1，
+  # 所以 onig_sys 必须能从 pkg-config 找到 system libonig。
   buildInputs = [
     openssl
+    oniguruma
   ];
 
   cargoHash = "sha256-KnhbGT+kZRINFn6gi/qBuj3bI6UhP6c/AFSNXqrvRxI=";
