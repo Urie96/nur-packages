@@ -44,12 +44,12 @@
   slim-kitten = pkgs.callPackage ./pkgs/slim-kitten { };
   pick-window = pkgs.callPackage ./pkgs/pick-window { };
   copy = pkgs.callPackage ./pkgs/copy { };
-  coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
   sops-render = pkgs.callPackage ./pkgs/sops-render { };
   rbw = pkgs.callPackage ./pkgs/rbw { };
   xopen = pkgs.callPackage ./pkgs/xopen { };
   tgdl = pkgs.callPackage ./pkgs/tgdl { };
   apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
+  hacbrewpacklz = pkgs.callPackage ./pkgs/hacbrewpacklz { };
 
   # binary
   kitty = pkgs.callPackage ./pkgs/kitty { };
