@@ -2,7 +2,10 @@
   lib,
   stdenv,
   fetchFromGitHub,
-  zig,
+  # 固定到 zig 0.16:nixpkgs 默认 zig 已升到 0.17,而 0.17 删除了
+  # std.Build.getInstallPath,上游 build.zig 还在用(build.zig.zon 里
+  # minimum_zig_version = "0.16.0"),不固定会直接编译失败。
+  zig_0_16,
   versionCheckHook,
 }:
 stdenv.mkDerivation (finalAttrs: {
@@ -16,7 +19,7 @@ stdenv.mkDerivation (finalAttrs: {
     hash = "sha256-Qi5srrpdhf3VcXaqZbijJD23Um0G7WgRzK0hR+mb7nU=";
   };
 
-  nativeBuildInputs = [ zig ];
+  nativeBuildInputs = [ zig_0_16 ];
 
   # zig 0.16 自带 setup hook(zigConfigurePhase / zigBuildPhase / zigInstallPhase):
   #   - configure 阶段自动设置 ZIG_GLOBAL_CACHE_DIR=$(mktemp -d),沙箱内可写

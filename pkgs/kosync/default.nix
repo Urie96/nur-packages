@@ -3,6 +3,7 @@
   fetchFromGitHub,
   lib,
   zlib,
+  libgit2,
   pkg-config,
 }:
 rustPlatform.buildRustPackage rec {
@@ -27,7 +28,12 @@ rustPlatform.buildRustPackage rec {
 
   nativeBuildInputs = [ pkg-config ];
 
-  buildInputs = [ zlib ];
+  # nixpkgs 的 cargo-setup-hook 导出 LIBGIT2_NO_VENDOR=1，
+  # 所以 libgit2-sys 必须能找到系统 libgit2（kosync 用 git2 做版本信息）。
+  buildInputs = [
+    zlib
+    libgit2
+  ];
 
   env = {
     KOSYNC_ADDR = "127.0.0.1:3000";

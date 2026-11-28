@@ -14,6 +14,7 @@
   foxtrot = pkgs.callPackage ./pkgs/foxtrot { };
   flatnvim = pkgs.callPackage ./pkgs/flatnvim { };
   herdr-reviewr = pkgs.callPackage ./pkgs/herdr-reviewr { };
+  herdr-plugin-sesh = pkgs.callPackage ./pkgs/herdr-plugin-sesh { };
   keywrap = pkgs.callPackage ./pkgs/keywrap { };
   lazydeck = pkgs.callPackage ./pkgs/lazydeck { };
   preview = pkgs.callPackage ./pkgs/preview { };
@@ -29,7 +30,8 @@
   cliclick = pkgs.callPackage ./pkgs/cliclick { };
   app-switch-watcher = pkgs.callPackage ./pkgs/app-switch-watcher { };
   confetti = pkgs.callPackage ./pkgs/confetti { };
-  sing-box = pkgs.callPackage ./pkgs/sing-box { };
+  # sing-box = pkgs.callPackage ./pkgs/sing-box { };
+  sing-box = pkgs.sing-box;
   llm-api-proxy = pkgs.callPackage ./pkgs/llm-api-proxy { };
   kosync = pkgs.callPackage ./pkgs/kosync { };
   ownfoil = pkgs.callPackage ./pkgs/ownfoil { };
@@ -44,12 +46,13 @@
   slim-kitten = pkgs.callPackage ./pkgs/slim-kitten { };
   pick-window = pkgs.callPackage ./pkgs/pick-window { };
   copy = pkgs.callPackage ./pkgs/copy { };
-  coding-agent-status = pkgs.callPackage ./pkgs/coding-agent-status { };
   sops-render = pkgs.callPackage ./pkgs/sops-render { };
   rbw = pkgs.callPackage ./pkgs/rbw { };
   xopen = pkgs.callPackage ./pkgs/xopen { };
   tgdl = pkgs.callPackage ./pkgs/tgdl { };
   apple-music-api = pkgs.callPackage ./pkgs/apple-music-api { };
+  hacbrewpacklz = pkgs.callPackage ./pkgs/hacbrewpacklz { };
+  baton = pkgs.callPackage ./pkgs/baton { };
 
   # binary
   kitty = pkgs.callPackage ./pkgs/kitty { };

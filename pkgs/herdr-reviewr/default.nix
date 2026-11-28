@@ -4,6 +4,8 @@
   rustPlatform,
   fetchFromGitHub,
   pkg-config,
+  oniguruma,
+  libgit2,
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "herdr-reviewr";
@@ -19,6 +21,13 @@ rustPlatform.buildRustPackage (finalAttrs: {
   cargoHash = "sha256-lPIvi3ImQ606lADDF0CPpjVGs8uU2neL/C4usUG2QW8=";
 
   nativeBuildInputs = [ pkg-config ];
+
+  # nixpkgs 的 cargo-setup-hook 同时导出 RUSTONIG_SYSTEM_LIBONIG=1 和
+  # LIBGIT2_NO_VENDOR=1，所以 onig_sys / libgit2-sys 必须能找到系统库。
+  buildInputs = [
+    oniguruma
+    libgit2
+  ];
 
   # The manifest pins rust-version = 1.99.1, newer than nixpkgs' rustc; the pin
   # is a patch bump with no MSRV-only feature behind it, so relax it. Patched
