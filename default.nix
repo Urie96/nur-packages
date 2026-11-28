@@ -14,6 +14,7 @@
   foxtrot = pkgs.callPackage ./pkgs/foxtrot { };
   flatnvim = pkgs.callPackage ./pkgs/flatnvim { };
   herdr-reviewr = pkgs.callPackage ./pkgs/herdr-reviewr { };
+  herdr-plugin-sesh = pkgs.callPackage ./pkgs/herdr-plugin-sesh { };
   keywrap = pkgs.callPackage ./pkgs/keywrap { };
   lazydeck = pkgs.callPackage ./pkgs/lazydeck { };
   preview = pkgs.callPackage ./pkgs/preview { };

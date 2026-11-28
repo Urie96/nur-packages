@@ -56,6 +56,6 @@ buildDotnetModule rec {
     license = lib.licenses.gpl2Only;
     mainProgram = "hacbrewpacklz";
     # prod.keys 不包含在包里，需要自己从 Switch 上导出。
-    platforms = lib.platforms.linux ++ lib.platforms.darwin;
+    platforms = [ "x86-64_linux" ];
   };
 }
